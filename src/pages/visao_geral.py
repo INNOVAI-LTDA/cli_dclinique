@@ -20,7 +20,7 @@ def render(data):
     col_chart, col_context = st.columns([2, 1])
     with col_chart:
         st.subheader("Peso médio esperado vs realizado")
-        st.plotly_chart(average_weight_chart(data["weight_entries"], data["patient_goals"]), use_container_width=True)
+        st.plotly_chart(average_weight_chart(data["weight_entries"], data["patient_goals"]), width="stretch")
     with col_context:
         total = len(summary)
         engaged = int(summary["is_engaged"].sum())

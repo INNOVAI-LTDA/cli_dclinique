@@ -19,7 +19,7 @@ def render(data):
         ]
     )
     st.subheader(f"Preview fictício — {source_type}")
-    st.dataframe(preview[preview["tipo"] == source_type], hide_index=True, use_container_width=True)
+    st.dataframe(preview[preview["tipo"] == source_type], hide_index=True, width="stretch")
     if st.button("Processar dados", type="primary"):
         st.toast("Processamento não implementado nesta casca navegável.")
         st.info("Aqui futuramente entrarão validações, parsers e persistência em banco.")

@@ -7,4 +7,4 @@ import streamlit as st
 
 def render_table(df: pd.DataFrame, columns: list[str] | None = None) -> None:
     view = df[columns].copy() if columns else df.copy()
-    st.dataframe(view, use_container_width=True, hide_index=True)
+    st.dataframe(view, width="stretch", hide_index=True)
