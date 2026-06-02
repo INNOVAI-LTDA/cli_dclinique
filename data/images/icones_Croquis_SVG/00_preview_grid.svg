@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="710" height="680" viewBox="0 0 710 680" fill="none">
+<rect width="100%" height="100%" fill="white"/>
+<text x="20" y="30" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#111827">Ícones SVG recriados da imagem original</text>
+<text x="20" y="52" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6B7280">Arquivos vetoriais novos, sem recorte do screenshot.</text>
+<rect x="20" y="70" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(83,88) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4F8EF7" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M3 10.5L12 3l9 7.5"/>
+<path d="M5 9.5V21h5v-6h4v6h5V9.5"/>
+</svg></g>
+<text x="95" y="152" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Visão Geral</text>
+<rect x="190" y="70" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(253,88) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="6" cy="12" r="2.2"/>
+<circle cx="17.5" cy="6.5" r="2.2"/>
+<circle cx="17.5" cy="17.5" r="2.2"/>
+<path d="M8 11l7.2-3.2"/>
+<path d="M8 13l7.2 3.2"/>
+</svg></g>
+<text x="265" y="152" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Mapa de Decisão</text>
+<rect x="360" y="70" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(423,88) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="9" cy="9" r="3"/>
+<circle cx="16.5" cy="10.2" r="2.5"/>
+<path d="M3.5 19c.8-2.9 3.1-4.5 5.5-4.5s4.7 1.6 5.5 4.5"/>
+<path d="M13.3 19c.5-1.9 2-3.2 4.1-3.2 1.7 0 3.1.9 4.1 3.2"/>
+</svg></g>
+<text x="435" y="152" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Pacientes</text>
+<rect x="530" y="70" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(593,88) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M6 17h12"/>
+<path d="M8 17V11a4 4 0 1 1 8 0v6"/>
+<path d="M10 20a2 2 0 0 0 4 0"/>
+</svg></g>
+<text x="605" y="152" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Alertas</text>
+<rect x="20" y="190" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(83,208) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M20 7v5h-5"/>
+<path d="M4 17v-5h5"/>
+<path d="M7.2 7.8A7 7 0 0 1 19 10"/>
+<path d="M16.8 16.2A7 7 0 0 1 5 14"/>
+</svg></g>
+<text x="95" y="272" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Atualização de Dados</text>
+<rect x="190" y="190" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(253,208) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M12 3l7 3v5c0 4.5-2.8 7.5-7 10-4.2-2.5-7-5.5-7-10V6l7-3z"/>
+<path d="M9 12l2 2 4-4"/>
+</svg></g>
+<text x="265" y="272" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Qualidade dos Dados</text>
+<rect x="360" y="190" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(423,208) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="9"/>
+<path d="M12 10v6"/>
+<circle cx="12" cy="7" r="0.9" fill="#9CA3AF" stroke="none"/>
+</svg></g>
+<text x="435" y="272" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Info</text>
+<rect x="530" y="190" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(593,208) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="10.5" cy="10.5" r="5.5"/>
+<path d="M15 15l5 5"/>
+</svg></g>
+<text x="605" y="272" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Busca</text>
+<rect x="20" y="310" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(83,328) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M6 9l6 6 6-6"/>
+</svg></g>
+<text x="95" y="392" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Chevron Baixo</text>
+<rect x="190" y="310" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(253,328) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M15 6l-6 6 6 6"/>
+</svg></g>
+<text x="265" y="392" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Página Anterior</text>
+<rect x="360" y="310" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(423,328) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M9 6l6 6-6 6"/>
+</svg></g>
+<text x="435" y="392" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Página Próxima</text>
+<rect x="530" y="310" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(593,328) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4F8EF7" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M19 12H5"/>
+<path d="M11 6l-6 6 6 6"/>
+</svg></g>
+<text x="605" y="392" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Voltar</text>
+<rect x="20" y="430" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(83,448) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4F8EF7" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M7 18a4 4 0 0 1-.5-8A5.5 5.5 0 0 1 17 8.5 4 4 0 1 1 17 18H7z"/>
+<path d="M12 15V9"/>
+<path d="M9.5 11.5L12 9l2.5 2.5"/>
+</svg></g>
+<text x="95" y="512" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Upload Nuvem</text>
+<rect x="190" y="430" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(253,448) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M8 3h6l4 4v14H8z"/>
+<path d="M14 3v4h4"/>
+<path d="M10 12h6"/>
+<path d="M10 16h6"/>
+</svg></g>
+<text x="265" y="512" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Arquivo Documento</text>
+<rect x="360" y="430" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(423,448) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="9"/>
+<path d="M8.2 12.2l2.5 2.6 5-5.3"/>
+</svg></g>
+<text x="435" y="512" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Check Verde</text>
+<rect x="530" y="430" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(593,448) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M12 4l8 14H4L12 4z"/>
+<path d="M12 9v4.5"/>
+<circle cx="12" cy="16.8" r="0.8" fill="#F59E0B" stroke="none"/>
+</svg></g>
+<text x="605" y="512" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Alerta Amarelo</text>
+<rect x="20" y="550" width="150" height="95" rx="14" fill="#F8FAFC" stroke="#E5E7EB"/>
+<g transform="translate(83,568) scale(2.0)"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+<path d="M19 7v5h-5"/>
+<path d="M5 17v-5h5"/>
+<path d="M7 8a7 7 0 0 1 12 2"/>
+<path d="M17 16a7 7 0 0 1-12-2"/>
+</svg></g>
+<text x="95" y="632" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#374151">Atualizar Agora</text>
+</svg>

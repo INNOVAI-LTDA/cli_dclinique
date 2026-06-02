@@ -1,0 +1,121 @@
+[
+  {
+    "name": "visao_geral",
+    "label": "Visão Geral",
+    "file": "01_visao_geral.svg",
+    "color": "#4F8EF7",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "mapa_de_decisao",
+    "label": "Mapa de Decisão",
+    "file": "02_mapa_de_decisao.svg",
+    "color": "#6B7280",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "pacientes",
+    "label": "Pacientes",
+    "file": "03_pacientes.svg",
+    "color": "#6B7280",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "alertas",
+    "label": "Alertas",
+    "file": "04_alertas.svg",
+    "color": "#6B7280",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "atualizacao_dados",
+    "label": "Atualização de Dados",
+    "file": "05_atualizacao_dados.svg",
+    "color": "#6B7280",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "qualidade_dados",
+    "label": "Qualidade dos Dados",
+    "file": "06_qualidade_dados.svg",
+    "color": "#6B7280",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "info",
+    "label": "Info",
+    "file": "07_info.svg",
+    "color": "#9CA3AF",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "busca",
+    "label": "Busca",
+    "file": "08_busca.svg",
+    "color": "#9CA3AF",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "chevron_baixo",
+    "label": "Chevron Baixo",
+    "file": "09_chevron_baixo.svg",
+    "color": "#9CA3AF",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "pagina_anterior",
+    "label": "Página Anterior",
+    "file": "10_pagina_anterior.svg",
+    "color": "#9CA3AF",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "pagina_proxima",
+    "label": "Página Próxima",
+    "file": "11_pagina_proxima.svg",
+    "color": "#9CA3AF",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "voltar",
+    "label": "Voltar",
+    "file": "12_voltar.svg",
+    "color": "#4F8EF7",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "upload_nuvem",
+    "label": "Upload Nuvem",
+    "file": "13_upload_nuvem.svg",
+    "color": "#4F8EF7",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "arquivo_documento",
+    "label": "Arquivo Documento",
+    "file": "14_arquivo_documento.svg",
+    "color": "#9CA3AF",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "check_verde",
+    "label": "Check Verde",
+    "file": "15_check_verde.svg",
+    "color": "#22C55E",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "alerta_amarelo",
+    "label": "Alerta Amarelo",
+    "file": "16_alerta_amarelo.svg",
+    "color": "#F59E0B",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  },
+  {
+    "name": "atualizar_agora",
+    "label": "Atualizar Agora",
+    "file": "17_atualizar_agora.svg",
+    "color": "#3B82F6",
+    "origin": "recriado em SVG com base nos ícones identificados na imagem original"
+  }
+]

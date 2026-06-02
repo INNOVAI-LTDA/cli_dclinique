@@ -16,15 +16,29 @@ def render(data):
     st.title("Ficha do Paciente")
     st.caption("Ficha construída com dados fictícios; campos espelham o contrato planejado para dados reais.")
     summary = patient_summary(data)
-    patient_id = st.session_state.get("selected_patient_id") or summary.iloc[0]["patient_id"]
-    st.session_state["selected_patient_id"] = patient_id
-    patient_options = dict(zip(summary["name"], summary["patient_id"]))
-    current_name = summary.loc[summary["patient_id"] == patient_id, "name"].iloc[0]
-    selected_name = st.selectbox("Trocar paciente", list(patient_options), index=list(patient_options).index(current_name))
-    if patient_options[selected_name] != patient_id:
-        st.session_state["selected_patient_id"] = patient_options[selected_name]
+    if summary.empty:
+        render_empty("Nenhum paciente disponivel para exibir a ficha.")
+        return
+
+    valid_patient_ids = set(summary["patient_id"].tolist())
+    selected_patient_id = st.session_state.get("selected_patient_id")
+    if selected_patient_id not in valid_patient_ids:
+        selected_patient_id = summary.iloc[0]["patient_id"]
+        st.session_state["selected_patient_id"] = selected_patient_id
+
+    patient_ids = summary["patient_id"].tolist()
+    patient_labels = summary.set_index("patient_id")["name"].to_dict()
+    selected_patient_id = st.selectbox(
+        "Trocar paciente",
+        patient_ids,
+        index=patient_ids.index(selected_patient_id),
+        format_func=lambda pid: patient_labels.get(pid, pid),
+    )
+    if selected_patient_id != st.session_state["selected_patient_id"]:
+        st.session_state["selected_patient_id"] = selected_patient_id
         st.rerun()
-    patient = summary[summary["patient_id"] == st.session_state["selected_patient_id"]].iloc[0].to_dict()
+
+    patient = summary.loc[summary["patient_id"] == st.session_state["selected_patient_id"]].iloc[0].to_dict()
     render_patient_header(patient)
 
     goals = data["patient_goals"][data["patient_goals"]["patient_id"] == patient["patient_id"]]

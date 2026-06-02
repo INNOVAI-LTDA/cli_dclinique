@@ -16,7 +16,9 @@ def init_navigation_state() -> None:
     """Ensure Streamlit navigation keys exist."""
     import streamlit as st
 
-    st.session_state.setdefault("page", DEFAULT_PAGE)
+    current_page = st.session_state.setdefault("page", DEFAULT_PAGE)
+    if current_page not in PAGES:
+        st.session_state["page"] = DEFAULT_PAGE
     st.session_state.setdefault("selected_patient_id", None)
 
 
