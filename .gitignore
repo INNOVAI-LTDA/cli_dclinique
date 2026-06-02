@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.env
+.streamlit/secrets.toml
+data/raw/
+data/real/
+*.xlsx
+*.xls
+*.csv
+*.pdf
+.DS_Store
