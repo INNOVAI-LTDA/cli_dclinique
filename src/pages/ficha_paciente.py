@@ -50,7 +50,7 @@ def render(data):
     cols[3].metric("Peso meta", f"{goal.get('target_weight', 0):.1f} kg")
 
     st.subheader("Peso esperado vs realizado")
-    st.plotly_chart(patient_weight_chart(data["weight_entries"], data["patient_goals"], patient["patient_id"]), width="stretch")
+    st.plotly_chart(patient_weight_chart(data["weight_entries"], data["patient_goals"], patient["patient_id"]), use_container_width=True)
 
     st.subheader("Plano e execução")
     execs = data["execution_summary"][data["execution_summary"]["patient_id"] == patient["patient_id"]].copy()
@@ -67,7 +67,7 @@ def render(data):
             }
         )
         render_table(execs[["Procedimento", "Previsto", "Realizado", "Restante", "Status"]])
-        st.plotly_chart(execution_bar(data["execution_summary"], patient["patient_id"]), width="stretch")
+        st.plotly_chart(execution_bar(data["execution_summary"], patient["patient_id"]), use_container_width=True)
 
     st.subheader("Últimos agendamentos")
     appointments = data["appointments"][data["appointments"]["patient_id"] == patient["patient_id"]].sort_values(

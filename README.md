@@ -18,7 +18,7 @@ Esta entrega usa somente dados fictícios em memória, modelados como se viessem
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m streamlit run app.py
+streamlit run app.py
 ```
 
 Observação: em alguns ambientes Windows, o comando `streamlit` pode não estar no PATH. Nesse caso, prefira `python -m streamlit`.

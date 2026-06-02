@@ -47,7 +47,7 @@ def render(data):
     fig.add_vline(x=70, line_dash="dash", line_color="#64748b")
     fig.add_hline(y=7, line_dash="dash", line_color="#64748b")
     fig.update_layout(margin=dict(l=10, r=10, t=30, b=10), legend_title_text="")
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
     groups = quadrants(summary)
     row1 = st.columns(2)
