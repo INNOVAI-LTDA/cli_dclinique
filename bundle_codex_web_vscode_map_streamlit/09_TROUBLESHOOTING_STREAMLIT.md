@@ -21,7 +21,7 @@ Revise os nomes das colunas usadas nesta página e alinhe com os DataFrames reto
 Prompt:
 
 ```text
-Corrija o gráfico Plotly desta página. Garanta que os dados existam, que as colunas usadas estejam corretas e que `st.plotly_chart(..., use_container_width=True)` funcione.
+Corrija o gráfico Plotly desta página. Garanta que os dados existam, que as colunas usadas estejam corretas e que `st.plotly_chart(..., width="stretch")` funcione.
 ```
 
 ## Erro: navegação não troca de página

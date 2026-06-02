@@ -14,12 +14,14 @@ Esta entrega usa somente dados fictícios em memória, modelados como se viessem
 
 ## Como rodar localmente
 
-```bash
+```powershell
 python -m venv .venv
-source .venv/bin/activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+Observação: em alguns ambientes Windows, o comando `streamlit` pode não estar no PATH. Nesse caso, prefira `python -m streamlit`.
 
 ## Estrutura
 
@@ -72,3 +74,9 @@ Além de abrir a aplicação, a entrega foi revisada contra o checklist de execu
 ## Navegação
 
 A navegação usa `st.session_state["page"]` e `st.session_state["selected_patient_id"]`, permitindo abrir a ficha a partir de Visão Geral, Mapa de Decisão, Pacientes e Alertas.
+
+## Escopo desta casca
+
+- Foco em fluxo navegavel, legibilidade visual e contrato de dados mockado.
+- Sem persistência em banco, sem autenticação e sem integrações externas.
+- Mudanças devem preservar nomes de campos e tabelas retornados por `load_mock_data()`.

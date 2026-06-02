@@ -12,6 +12,45 @@ def _dt(days: int, hour: int = 9) -> pd.Timestamp:
     return _d(days) + pd.Timedelta(hours=hour)
 
 
+def _assert_referential_integrity(data: dict[str, pd.DataFrame]) -> None:
+    """Fail fast if mock relational IDs are inconsistent."""
+    patient_ids = set(data["patients"]["patient_id"].dropna().astype(str))
+    plan_ids = set(data["treatment_plans"]["plan_id"].dropna().astype(str))
+
+    patient_refs = [
+        ("treatment_plans", "patient_id"),
+        ("treatment_plan_items", "patient_id"),
+        ("execution_summary", "patient_id"),
+        ("appointments", "patient_id"),
+        ("appointment_items", "patient_id"),
+        ("patient_goals", "patient_id"),
+        ("weight_entries", "patient_id"),
+        ("satisfaction_entries", "patient_id"),
+        ("alerts", "patient_id"),
+    ]
+    plan_refs = [
+        ("treatment_plan_items", "plan_id"),
+        ("execution_summary", "plan_id"),
+        ("patient_goals", "plan_id"),
+        ("weight_entries", "plan_id"),
+        ("alerts", "plan_id"),
+    ]
+
+    errors: list[str] = []
+    for table, column in patient_refs:
+        unknown = sorted(set(data[table][column].dropna().astype(str)) - patient_ids)
+        if unknown:
+            errors.append(f"{table}.{column} com patient_id(s) inexistente(s): {', '.join(unknown[:3])}")
+
+    for table, column in plan_refs:
+        unknown = sorted(set(data[table][column].dropna().astype(str)) - plan_ids)
+        if unknown:
+            errors.append(f"{table}.{column} com plan_id(s) inexistente(s): {', '.join(unknown[:3])}")
+
+    if errors:
+        raise ValueError("Inconsistência relacional no mock_data: " + " | ".join(errors))
+
+
 def load_mock_data() -> dict[str, pd.DataFrame]:
     """Return all mock tables used by the navigable shell."""
     patients = pd.DataFrame(
@@ -254,7 +293,7 @@ def load_mock_data() -> dict[str, pd.DataFrame]:
         columns=["issue_id", "source", "severity", "issue_type", "description", "patient_id", "field_name"],
     )
 
-    return {
+    data = {
         "patients": patients,
         "treatment_plans": treatment_plans,
         "treatment_plan_items": treatment_plan_items,
@@ -267,3 +306,6 @@ def load_mock_data() -> dict[str, pd.DataFrame]:
         "alerts": alerts,
         "data_quality_issues": data_quality_issues,
     }
+
+    _assert_referential_integrity(data)
+    return data
