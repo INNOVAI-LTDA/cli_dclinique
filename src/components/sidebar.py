@@ -6,7 +6,6 @@ from datetime import datetime
 from html import escape
 from pathlib import Path
 import re
-from urllib.parse import quote
 
 import streamlit as st
 
@@ -58,13 +57,17 @@ def _render_nav_html(current_page: str) -> str:
     rows = []
     for page in SIDEBAR_PAGES:
         active_class = " is-active" if page == current_page else ""
+        disabled_attr = " disabled" if page == current_page else ""
         icon_color = "#2b63d9" if page == current_page else "#4b5563"
         icon_uri = _svg_data_uri(PAGE_ICONS[page], icon_color)
         row = (
-            f'<a class="map-nav-item{active_class}" href="?nav={quote(page)}">'
+            '<form class="map-nav-form" method="get" target="_self">'
+            f'<input type="hidden" name="nav" value="{escape(page, quote=True)}" />'
+            f'<button class="map-nav-item{active_class}" type="submit"{disabled_attr}>'
             f'<span class="map-nav-icon" aria-hidden="true"><img src="{icon_uri}" alt="" /></span>'
             f'<span class="map-nav-label">{escape(page)}</span>'
-            "</a>"
+            "</button>"
+            "</form>"
         )
         rows.append(row)
     return "".join(rows)
@@ -81,7 +84,10 @@ def _render_footer_html() -> str:
         '<div class="map-sidebar-footer">'
         '<p class="map-footer-title">Última atualização</p>'
         f'<p class="map-footer-value">{formatted}</p>'
-        f'<a class="map-refresh-link" href="?refresh=1"><span aria-hidden="true"><img src="{icon_refresh_uri}" alt="" /></span>Atualizar agora</a>'
+        '<form class="map-refresh-form" method="get" target="_self">'
+        '<input type="hidden" name="refresh" value="1" />'
+        f'<button class="map-refresh-link" type="submit"><span aria-hidden="true"><img src="{icon_refresh_uri}" alt="" /></span>Atualizar agora</button>'
+        "</form>"
         "</div>"
     )
 
@@ -117,43 +123,56 @@ def _sidebar_css() -> str:
                 gap: 0.2rem;
             }
 
+            .map-nav-form,
+            .map-refresh-form {
+                margin: 0;
+            }
+
             .map-nav-item {
-                display: flex;
                 align-items: center;
-                gap: 0.56rem;
-                min-height: 2rem;
-                padding: 0.36rem 0.62rem;
+                background: transparent;
+                border: none;
                 border-radius: 0.5rem;
-                text-decoration: none !important;
                 color: #374151;
+                display: flex;
                 font-size: 0.95rem;
                 font-weight: 600;
+                gap: 0.56rem;
+                justify-content: flex-start;
+                min-height: 2rem;
+                padding: 0.36rem 0.62rem;
+                text-align: left;
+                text-decoration: none !important;
                 transition: background-color 120ms ease, color 120ms ease;
+                width: 100%;
             }
 
             .map-nav-item:hover {
                 background: #edf3ff;
                 color: #1e40af;
+                cursor: pointer;
             }
 
             .map-nav-item.is-active {
                 background: #dee8f8;
                 color: #2857b8;
+                cursor: default;
+                opacity: 1;
             }
 
             .map-nav-icon {
-                display: inline-flex;
                 align-items: center;
+                display: inline-flex;
+                flex-shrink: 0;
                 justify-content: center;
                 line-height: 0;
-                flex-shrink: 0;
             }
 
             .map-nav-icon img,
             .map-refresh-link img {
-                width: 17px;
-                height: 17px;
                 display: block;
+                height: 17px;
+                width: 17px;
             }
 
             .map-sidebar-footer {
@@ -178,16 +197,20 @@ def _sidebar_css() -> str:
             }
 
             .map-refresh-link {
-                display: inline-flex;
                 align-items: center;
-                gap: 0.34rem;
+                background: transparent;
+                border: none;
                 color: #2d66d2;
-                text-decoration: none !important;
+                display: inline-flex;
                 font-size: 0.88rem;
                 font-weight: 600;
+                gap: 0.34rem;
+                padding: 0;
+                text-decoration: none !important;
             }
 
             .map-refresh-link:hover {
+                cursor: pointer;
                 text-decoration: underline;
             }
         </style>

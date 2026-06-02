@@ -9,6 +9,7 @@ import streamlit as st
 
 from src.charts.weight_chart import average_weight_chart
 from src.metrics import attention_patients, overview_kpis, patient_summary
+from src.navigation import go_to
 
 
 def _overview_css() -> str:
@@ -121,23 +122,6 @@ def _overview_css() -> str:
             .ov-priority-media { background: #fef3c7; color: #b45309; }
             .ov-priority-baixa { background: #dcfce7; color: #166534; }
 
-            .ov-alert-link-wrap {
-                margin-top: 0.46rem;
-                padding-top: 0.38rem;
-                border-top: 1px solid #f1f5f9;
-                text-align: center;
-            }
-
-            .ov-alert-link {
-                color: #2563eb;
-                font-size: 0.76rem;
-                font-weight: 600;
-                text-decoration: none;
-            }
-
-            .ov-alert-link:hover {
-                text-decoration: underline;
-            }
         </style>
         """
 
@@ -261,7 +245,8 @@ def render(data):
             panel_html = (
                 '<div class="ov-attention-shell">'
                 f'<div class="ov-attention-content">{content_html}</div>'
-                '<div class="ov-alert-link-wrap"><a class="ov-alert-link" href="?nav=Alertas">Ver detalhes →</a></div>'
                 '</div>'
             )
             st.markdown(panel_html, unsafe_allow_html=True)
+            if st.button("Ver detalhes →", key="overview_alert_details"):
+                go_to("Alertas")
