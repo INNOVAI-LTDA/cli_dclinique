@@ -1,15 +1,17 @@
 """Utilities for session-state based navigation."""
 
-PAGES = [
+SIDEBAR_PAGES = [
     "Visão Geral",
     "Mapa de Decisão",
     "Pacientes",
-    "Ficha do Paciente",
     "Alertas",
     "Atualização de Dados",
     "Qualidade dos Dados",
 ]
-DEFAULT_PAGE = PAGES[0]
+
+INTERNAL_PAGES = ["Ficha do Paciente"]
+PAGES = SIDEBAR_PAGES + INTERNAL_PAGES
+DEFAULT_PAGE = SIDEBAR_PAGES[0]
 
 
 def init_navigation_state() -> None:

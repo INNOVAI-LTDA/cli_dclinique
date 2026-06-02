@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 
 
@@ -33,10 +32,43 @@ def patient_weight_chart(weight_entries: pd.DataFrame, patient_goals: pd.DataFra
     return fig
 
 
-def average_weight_chart(weight_entries: pd.DataFrame, patient_goals: pd.DataFrame) -> go.Figure:
+def average_weight_chart(weight_entries: pd.DataFrame, patient_goals: pd.DataFrame, height: int | None = None) -> go.Figure:
     df = _weight_with_expected(weight_entries, patient_goals)
-    df["measurement_date"] = df["measurement_date"].dt.date
-    avg = df.groupby("measurement_date", as_index=False)[["expected_weight", "weight"]].mean()
-    long = avg.melt("measurement_date", value_vars=["expected_weight", "weight"], var_name="Série", value_name="Peso médio")
-    long["Série"] = long["Série"].map({"expected_weight": "Esperado", "weight": "Realizado"})
-    return px.line(long, x="measurement_date", y="Peso médio", color="Série", markers=True)
+    avg = (
+        df.groupby(pd.Grouper(key="measurement_date", freq="MS"), as_index=False)[["expected_weight", "weight"]]
+        .mean()
+        .dropna(subset=["measurement_date"])
+    )
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=avg["measurement_date"],
+            y=avg["expected_weight"],
+            name="Esperado",
+            mode="lines",
+            line={"color": "#3B82F6", "width": 2, "dash": "dash"},
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=avg["measurement_date"],
+            y=avg["weight"],
+            name="Realizado",
+            mode="lines",
+            line={"color": "#2563EB", "width": 2.2},
+        )
+    )
+
+    fig.update_layout(
+        margin={"l": 12, "r": 8, "t": 8, "b": 8},
+        legend={"title": None, "orientation": "h", "x": 0.0, "y": 1.15},
+        yaxis_title="Peso (kg)",
+        xaxis_title="",
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        height=height,
+    )
+    fig.update_xaxes(showgrid=False, tickformat="%b/%y")
+    fig.update_yaxes(showgrid=True, gridcolor="#e5e7eb")
+    return fig
