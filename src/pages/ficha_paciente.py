@@ -17,7 +17,7 @@ def render(data):
     st.caption("Ficha construída com dados fictícios; campos espelham o contrato planejado para dados reais.")
     summary = patient_summary(data)
     if summary.empty:
-        render_empty("Nenhum paciente disponivel para exibir a ficha.")
+        render_empty("Nenhum paciente disponível para exibir a ficha.")
         return
 
     valid_patient_ids = set(summary["patient_id"].tolist())

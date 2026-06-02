@@ -21,7 +21,7 @@ pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-Observacao: em alguns ambientes Windows, o comando `streamlit` pode nao estar no PATH. Nesse caso, prefira `python -m streamlit`.
+Observação: em alguns ambientes Windows, o comando `streamlit` pode não estar no PATH. Nesse caso, prefira `python -m streamlit`.
 
 ## Estrutura
 
@@ -78,5 +78,5 @@ A navegação usa `st.session_state["page"]` e `st.session_state["selected_patie
 ## Escopo desta casca
 
 - Foco em fluxo navegavel, legibilidade visual e contrato de dados mockado.
-- Sem persistencia em banco, sem autenticacao e sem integracoes externas.
-- Mudancas devem preservar nomes de campos e tabelas retornados por `load_mock_data()`.
+- Sem persistência em banco, sem autenticação e sem integrações externas.
+- Mudanças devem preservar nomes de campos e tabelas retornados por `load_mock_data()`.

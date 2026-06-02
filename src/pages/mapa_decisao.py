@@ -19,7 +19,7 @@ def _quadrant(title: str, df) -> None:
         with st.container(border=True):
             patient_chip(row["name"])
             st.caption(
-                f"Engajamento: {row['engagement_rate'] * 100:.0f}% | Satisfacao: {int(row['score']) if row['score'] == row['score'] else 0}/10 | Alertas: {int(row['open_alerts'])}"
+                f"Engajamento: {row['engagement_rate'] * 100:.0f}% | Satisfação: {int(row['score']) if row['score'] == row['score'] else 0}/10 | Alertas: {int(row['open_alerts'])}"
             )
             render_open_patient_button(row["patient_id"], key=f"map_{title}_{row['patient_id']}")
 

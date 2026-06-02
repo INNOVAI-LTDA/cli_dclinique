@@ -48,7 +48,7 @@ def _assert_referential_integrity(data: dict[str, pd.DataFrame]) -> None:
             errors.append(f"{table}.{column} com plan_id(s) inexistente(s): {', '.join(unknown[:3])}")
 
     if errors:
-        raise ValueError("Inconsistencia relacional no mock_data: " + " | ".join(errors))
+        raise ValueError("Inconsistência relacional no mock_data: " + " | ".join(errors))
 
 
 def load_mock_data() -> dict[str, pd.DataFrame]:
