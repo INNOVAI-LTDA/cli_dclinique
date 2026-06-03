@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import html
 import math
+from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
 
 from src.metrics import patient_summary
-from src.navigation import open_patient
 
 
 DEFAULT_PAGE_SIZE = 10
@@ -131,20 +131,25 @@ def _patients_css() -> str:
                 margin: 0.18rem 0;
             }
 
-            /* name rendered as compact button */
-            .patients-name-btn div[data-testid="stButton"] > button {
-                background: transparent;
-                border: none;
-                padding: 0;
+            /* name rendered as a navigation link */
+            .patients-name-link {
                 color: #0f172a;
+                display: inline-block;
                 font-weight: 700;
-                text-align: left;
+                padding: 0.36rem 0.5rem;
+                text-decoration: none;
             }
 
-            .patients-name-btn div[data-testid="stButton"] > button:hover {
+            .patients-name-link:hover {
                 color: #2563eb;
-                text-decoration: underline;
                 cursor: pointer;
+                text-decoration: underline;
+            }
+
+            .patients-name-link:focus-visible {
+                outline: 2px solid #2563eb;
+                outline-offset: 2px;
+                border-radius: 4px;
             }
 
             .patients-footer {
@@ -197,17 +202,6 @@ def _patients_css() -> str:
                 gap: 0.58rem;
                 height: 2rem;
                 padding: 0 0.68rem;
-            }
-
-            .patients-name-link {
-                color: #0f172a;
-                font-weight: 700;
-                text-decoration: none;
-            }
-
-            .patients-name-link:hover {
-                color: #2563eb;
-                text-decoration: underline;
             }
 
             /* opener icon removed per UX request */
@@ -372,9 +366,16 @@ def _render_table(df: pd.DataFrame) -> None:
         engagement = str(row.get("engagement_level", ""))
 
         cols = st.columns([3, 1, 1, 1, 1, 1, 1])
-        # Name as button calling open_patient to avoid query params
-        btn_key = f"patient_btn_{patient_id}"
-        cols[0].button(name or "-", key=btn_key, on_click=open_patient, args=(patient_id,))
+        # Name as a link navigating via query params (handled by the sidebar).
+        # Using target="_self" keeps the navigation in the same browser tab.
+        safe_name = html.escape(name) if name else "-"
+        safe_pid = quote(patient_id, safe="")
+        cols[0].markdown(
+            f'<a class="patients-name-link" '
+            f'href="?nav=Ficha%20do%20Paciente&patient_id={safe_pid}" '
+            f'target="_self" rel="noopener">{safe_name}</a>',
+            unsafe_allow_html=True,
+        )
 
         cols[1].markdown(f'<span class="patients-badge {_status_class(status)}">{html.escape(status)}</span>', unsafe_allow_html=True)
         cols[2].markdown(_format_date(row.get('start_date')), unsafe_allow_html=True)
