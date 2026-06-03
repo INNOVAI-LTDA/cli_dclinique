@@ -34,11 +34,18 @@ def patient_weight_chart(weight_entries: pd.DataFrame, patient_goals: pd.DataFra
 
 def average_weight_chart(weight_entries: pd.DataFrame, patient_goals: pd.DataFrame, height: int | None = None) -> go.Figure:
     df = _weight_with_expected(weight_entries, patient_goals)
-    avg = (
-        df.groupby(pd.Grouper(key="measurement_date", freq="MS"), as_index=False)[["expected_weight", "weight"]]
-        .mean()
-        .dropna(subset=["measurement_date"])
-    )
+
+    # Defensive: if measurement_date is missing or all-null, return empty figure
+    if "measurement_date" not in df.columns or df["measurement_date"].dropna().empty:
+        fig = go.Figure()
+        fig.update_layout(title="Sem dados de peso", height=height)
+        return fig
+
+    # Ensure measurement_date is datetime and use resample on the index for robust monthly averages
+    df = df.copy()
+    df["measurement_date"] = pd.to_datetime(df["measurement_date"])
+    df = df.set_index("measurement_date")
+    avg = df[["expected_weight", "weight"]].resample("MS").mean().reset_index()
 
     fig = go.Figure()
     fig.add_trace(

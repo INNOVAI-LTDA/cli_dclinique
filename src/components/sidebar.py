@@ -9,7 +9,7 @@ import re
 
 import streamlit as st
 
-from src.navigation import SIDEBAR_PAGES
+from src.navigation import SIDEBAR_PAGES, PAGES
 
 
 ICON_DIR = Path(__file__).resolve().parents[2] / "data" / "images" / "icones_Croquis_SVG"
@@ -39,10 +39,25 @@ def _apply_sidebar_actions() -> None:
     params = st.query_params
 
     target_page = params.get("nav")
-    if target_page in SIDEBAR_PAGES:
+    # normalize if query param is a list
+    if isinstance(target_page, (list, tuple)) and target_page:
+        target_page = target_page[0]
+
+    if target_page in PAGES:
         if target_page != st.session_state.get("page"):
             st.session_state["page"] = target_page
-        del params["nav"]
+        # If a patient_id param is supplied, set it in session state so internal pages can use it
+        patient_param = params.get("patient_id")
+        if isinstance(patient_param, (list, tuple)) and patient_param:
+            patient_param = patient_param[0]
+        if patient_param:
+            st.session_state["selected_patient_id"] = patient_param
+        try:
+            del params["nav"]
+            if "patient_id" in params:
+                del params["patient_id"]
+        except Exception:
+            pass
         st.rerun()
 
     refresh = params.get("refresh")

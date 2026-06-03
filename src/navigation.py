@@ -35,7 +35,9 @@ def go_to(page: str) -> None:
 def open_patient(patient_id: str) -> None:
     """Select a patient and navigate to the patient detail page."""
     import streamlit as st
-
+    # When called from a widget callback, Streamlit will rerun after
+    # the callback returns. Calling `st.rerun()` inside a callback is
+    # effectively a no-op, so we only update session state here and
+    # rely on the caller's environment to trigger the run loop.
     st.session_state["selected_patient_id"] = patient_id
     st.session_state["page"] = "Ficha do Paciente"
-    st.rerun()

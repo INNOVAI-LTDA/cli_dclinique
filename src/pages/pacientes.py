@@ -1,52 +1,447 @@
 """Patients page."""
 from __future__ import annotations
 
+import html
+import math
+
+import pandas as pd
 import streamlit as st
 
-from src.components.filters import patient_filters
-from src.components.tables import render_table
 from src.metrics import patient_summary
 from src.navigation import open_patient
 
 
-def render(data):
-    st.title("Pacientes")
-    summary = patient_summary(data)
-    filtered = patient_filters(summary)
-    st.subheader("Tabela de pacientes")
-    columns = [
-        "name",
-        "status",
-        "start_date",
-        "end_date",
-        "budget_code",
-        "sessions_expected",
-        "sessions_completed",
-        "sessions_remaining",
-        "engagement_level",
-        "open_alerts",
-    ]
-    render_table(
-        filtered[columns].rename(
-            columns={
-                "name": "Nome",
-                "status": "Status",
-                "start_date": "Início",
-                "end_date": "Fim",
-                "budget_code": "Orçamento",
-                "sessions_expected": "Sessões previstas",
-                "sessions_completed": "Sessões realizadas",
-                "sessions_remaining": "Sessões restantes",
-                "engagement_level": "Engajamento",
-                "open_alerts": "Alertas",
+DEFAULT_PAGE_SIZE = 10
+
+
+def _patients_css() -> str:
+    return """
+        <style>
+            .patients-page-title {
+                color: #111827;
+                font-size: 1.15rem;
+                font-weight: 750;
+                line-height: 1.2;
+                margin: 0 0 0.72rem;
             }
+
+            .patients-table-shell {
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 6px;
+                margin-top: 0.42rem;
+                overflow: hidden;
+            }
+
+            .patients-table {
+                border-collapse: collapse;
+                color: #111827;
+                font-size: 0.76rem;
+                width: 100%;
+            }
+
+            .patients-table th {
+                background: #f8fafc;
+                border-bottom: 1px solid #e5e7eb;
+                color: #0f172a;
+                font-size: 0.68rem;
+                font-weight: 750;
+                line-height: 1.15;
+                padding: 0.58rem 0.7rem;
+                text-align: left;
+                white-space: nowrap;
+            }
+
+            .patients-table td {
+                border-bottom: 1px solid #edf2f7;
+                color: #1f2937;
+                line-height: 1.18;
+                padding: 0.52rem 0.7rem;
+                vertical-align: middle;
+                white-space: nowrap;
+            }
+
+            .patients-table tr:last-child td {
+                border-bottom: none;
+            }
+
+            .patients-table tbody tr:hover td {
+                background: #f8fbff;
+            }
+
+            .patients-name-cell {
+                font-weight: 650;
+            }
+
+            .patients-badge {
+                border-radius: 999px;
+                display: inline-flex;
+                font-size: 0.66rem;
+                font-weight: 750;
+                line-height: 1;
+                padding: 0.22rem 0.48rem;
+            }
+
+            .patients-badge-active,
+            .patients-badge-high {
+                background: #dcfce7;
+                color: #15803d;
+            }
+
+            .patients-badge-paused,
+            .patients-badge-medium {
+                background: #fef3c7;
+                color: #b45309;
+            }
+
+            .patients-badge-ended {
+                background: #e5e7eb;
+                color: #4b5563;
+            }
+
+            .patients-badge-low {
+                background: #fed7aa;
+                color: #c2410c;
+            }
+
+            .patients-empty {
+                color: #64748b;
+                font-size: 0.82rem;
+                padding: 1.4rem;
+                text-align: center;
+            }
+
+            .patients-table-shell {
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 6px;
+                margin-top: 0.32rem;
+                overflow: hidden;
+                padding: 0.4rem;
+            }
+
+            .patients-table-body {
+                max-height: 220px;
+                overflow: auto;
+            }
+
+            .patients-row-sep {
+                height: 1px;
+                background: #edf2f7;
+                margin: 0.18rem 0;
+            }
+
+            /* name rendered as compact button */
+            .patients-name-btn div[data-testid="stButton"] > button {
+                background: transparent;
+                border: none;
+                padding: 0;
+                color: #0f172a;
+                font-weight: 700;
+                text-align: left;
+            }
+
+            .patients-name-btn div[data-testid="stButton"] > button:hover {
+                color: #2563eb;
+                text-decoration: underline;
+                cursor: pointer;
+            }
+
+            .patients-footer {
+                align-items: center;
+                color: #334155;
+                display: flex;
+                font-size: 0.74rem;
+                justify-content: space-between;
+                margin-top: 0.78rem;
+            }
+
+            .patients-page-controls {
+                align-items: center;
+                display: flex;
+                gap: 0.34rem;
+            }
+
+            .patients-page-pill {
+                align-items: center;
+                border-radius: 6px;
+                color: #334155;
+                display: inline-flex;
+                font-weight: 650;
+                height: 1.7rem;
+                justify-content: center;
+                min-width: 1.7rem;
+            }
+
+            .patients-page-pill.is-active {
+                background: #dbeafe;
+                color: #2563eb;
+            }
+
+            .patients-page-muted {
+                color: #94a3b8;
+            }
+
+            .patients-page-size {
+                align-items: center;
+                display: flex;
+                gap: 0.42rem;
+            }
+
+            .patients-page-size-select {
+                align-items: center;
+                border: 1px solid #dbe2ea;
+                border-radius: 6px;
+                display: inline-flex;
+                font-weight: 650;
+                gap: 0.58rem;
+                height: 2rem;
+                padding: 0 0.68rem;
+            }
+
+            .patients-name-link {
+                color: #0f172a;
+                font-weight: 700;
+                text-decoration: none;
+            }
+
+            .patients-name-link:hover {
+                color: #2563eb;
+                text-decoration: underline;
+            }
+
+            /* opener icon removed per UX request */
+
+            div[data-testid="stTextInput"] label,
+            div[data-testid="stSelectbox"] label {
+                color: #334155;
+                font-size: 0.68rem;
+                font-weight: 700;
+                margin-bottom: 0.16rem;
+            }
+
+            div[data-testid="stTextInput"] input,
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+                border-color: #dbe2ea;
+                border-radius: 6px;
+                font-size: 0.76rem;
+                min-height: 2.18rem;
+            }
+
+            div[data-testid="stButton"] > button {
+                border-radius: 6px;
+                font-size: 0.74rem;
+                font-weight: 700;
+                min-height: 2.1rem;
+            }
+
+            .patients-clear-button div[data-testid="stButton"] > button {
+                background: transparent;
+                border: none;
+                color: #2563eb;
+                justify-content: flex-start;
+                padding-left: 0;
+            }
+        </style>
+        """
+
+
+def _reset_filters() -> None:
+    st.session_state["patients_query"] = ""
+    st.session_state["patients_status"] = "Todos"
+    st.session_state["patients_period"] = "Todos"
+    st.session_state["patients_engagement"] = "Todos"
+    st.session_state["patients_page"] = 1
+
+
+def _format_date(value: object) -> str:
+    date = pd.to_datetime(value, errors="coerce")
+    if pd.isna(date):
+        return "--"
+    return date.strftime("%d/%m/%Y")
+
+
+def _status_class(status: str) -> str:
+    normalized = status.lower()
+    if normalized == "ativo":
+        return "patients-badge-active"
+    if normalized == "pausado":
+        return "patients-badge-paused"
+    return "patients-badge-ended"
+
+
+def _engagement_class(engagement: str) -> str:
+    normalized = engagement.lower()
+    if normalized == "alto":
+        return "patients-badge-high"
+    if normalized == "médio":
+        return "patients-badge-medium"
+    return "patients-badge-low"
+
+
+def _frequency_by_patient(data: dict[str, pd.DataFrame]) -> pd.Series:
+    items = data["treatment_plan_items"].copy()
+    if items.empty:
+        return pd.Series(dtype=object)
+    primary_items = items.sort_values(["patient_id", "sessions_expected"], ascending=[True, False])
+    return primary_items.groupby("patient_id")["frequency_type"].first()
+
+
+def _prepare_patient_rows(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    summary = patient_summary(data).copy()
+    summary["frequency_expected"] = summary["patient_id"].map(_frequency_by_patient(data)).fillna("--")
+    return summary.sort_values("name", kind="stable").reset_index(drop=True)
+
+
+def _apply_filters(summary: pd.DataFrame) -> pd.DataFrame:
+    filtered = summary.copy()
+    query = st.session_state.get("patients_query", "").strip().lower()
+    status = st.session_state.get("patients_status", "Todos")
+    period = st.session_state.get("patients_period", "Todos")
+    engagement = st.session_state.get("patients_engagement", "Todos")
+
+    if query:
+        filtered = filtered[
+            filtered["normalized_name"].str.contains(query, na=False)
+            | filtered["medical_record"].astype(str).str.lower().str.contains(query, na=False)
+        ]
+    if status != "Todos":
+        filtered = filtered[filtered["status"] == status]
+    if period == "Renovação próxima":
+        filtered = filtered[filtered["renewal_soon"]]
+    elif period == "Em andamento":
+        filtered = filtered[filtered["status"].isin(["Ativo", "Pausado", "Aguardando início"])]
+    elif period == "Encerrado":
+        filtered = filtered[~filtered["status"].isin(["Ativo", "Pausado", "Aguardando início"])]
+    if engagement != "Todos":
+        filtered = filtered[filtered["engagement_level"] == engagement]
+
+    return filtered.reset_index(drop=True)
+
+
+def _render_filters(summary: pd.DataFrame) -> None:
+    st.session_state.setdefault("patients_query", "")
+    st.session_state.setdefault("patients_status", "Todos")
+    st.session_state.setdefault("patients_period", "Todos")
+    st.session_state.setdefault("patients_engagement", "Todos")
+    st.session_state.setdefault("patients_page", 1)
+    st.session_state.setdefault("patients_page_size", DEFAULT_PAGE_SIZE)
+
+    status_options = ["Todos"] + sorted(summary["status"].dropna().unique().tolist())
+    filter_cols = st.columns([1.55, 1.1, 1.1, 1.1, 0.7])
+    filter_cols[0].text_input("Buscar", placeholder="Buscar por nome ou e-mail...", key="patients_query")
+    filter_cols[1].selectbox("Status do plano", status_options, key="patients_status")
+    filter_cols[2].selectbox("Período", ["Todos", "Em andamento", "Renovação próxima", "Encerrado"], key="patients_period")
+    filter_cols[3].selectbox("Engajamento", ["Todos", "Alto", "Médio", "Baixo"], key="patients_engagement")
+    with filter_cols[4]:
+        st.markdown('<div class="patients-clear-button">', unsafe_allow_html=True)
+        st.write("")
+        st.button("Limpar filtros", key="patients_clear_filters", on_click=_reset_filters)
+        st.markdown("</div>", unsafe_allow_html=True)
+    # filters rendered above; table is rendered by `_render_table`
+
+
+def _render_table(df: pd.DataFrame) -> None:
+    if df.empty:
+        st.markdown(
+            '<div class="patients-table-shell"><div class="patients-empty">Nenhum paciente encontrado com os filtros atuais.</div></div>',
+            unsafe_allow_html=True,
         )
-    )
-    st.subheader("Selecionar paciente")
-    if filtered.empty:
-        st.info("Nenhum paciente encontrado com os filtros atuais.")
         return
-    options = dict(zip(filtered["name"], filtered["patient_id"]))
-    selected_name = st.selectbox("Paciente", list(options))
-    if st.button("Abrir Ficha do Paciente", type="primary"):
-        open_patient(options[selected_name])
+
+    # Header
+    header_html = (
+        '<div class="patients-table-shell">'
+        '<div style="display:flex;gap:0.6rem;font-size:0.68rem;font-weight:700;padding:0.5rem 0.7rem;background:#f8fafc;border-bottom:1px solid #e5e7eb;">'
+        '<div style="flex:3">Nome</div>'
+        '<div style="flex:1">Status do plano</div>'
+        '<div style="flex:1">Data início</div>'
+        '<div style="flex:1">Data fim</div>'
+        '<div style="flex:1">Frequência esperada</div>'
+        '<div style="flex:1">Engajamento</div>'
+        '<div style="flex:1">Renovação</div>'
+        '</div>'
+    )
+    st.markdown(header_html, unsafe_allow_html=True)
+
+    # Rows rendered with Streamlit controls so we can attach callbacks
+    for _, row in df.iterrows():
+        patient_id = str(row.get("patient_id", ""))
+        name = str(row.get("name", ""))
+        status = str(row.get("status", ""))
+        engagement = str(row.get("engagement_level", ""))
+
+        cols = st.columns([3, 1, 1, 1, 1, 1, 1])
+        # Name as button calling open_patient to avoid query params
+        btn_key = f"patient_btn_{patient_id}"
+        cols[0].button(name or "-", key=btn_key, on_click=open_patient, args=(patient_id,))
+
+        cols[1].markdown(f'<span class="patients-badge {_status_class(status)}">{html.escape(status)}</span>', unsafe_allow_html=True)
+        cols[2].markdown(_format_date(row.get('start_date')), unsafe_allow_html=True)
+        cols[3].markdown(_format_date(row.get('end_date')), unsafe_allow_html=True)
+        cols[4].markdown(html.escape(str(row.get('frequency_expected', '--'))), unsafe_allow_html=True)
+        cols[5].markdown(f'<span class="patients-badge {_engagement_class(engagement)}">{html.escape(engagement)}</span>', unsafe_allow_html=True)
+        cols[6].markdown(_format_date(row.get('end_date')) if bool(row.get('is_renewal', False)) else '--', unsafe_allow_html=True)
+
+        st.markdown('<div class="patients-row-sep"></div>', unsafe_allow_html=True)
+
+    # close wrapper
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def _page_numbers(page: int, page_count: int) -> list[int | str]:
+    if page_count <= 7:
+        return list(range(1, page_count + 1))
+    if page <= 4:
+        return [1, 2, 3, 4, 5, "...", page_count]
+    if page >= page_count - 3:
+        return [1, "...", page_count - 4, page_count - 3, page_count - 2, page_count - 1, page_count]
+    return [1, "...", page - 1, page, page + 1, "...", page_count]
+
+
+def _pagination_bounds(total_rows: int) -> tuple[int, int]:
+    page_size = int(st.session_state.get("patients_page_size", DEFAULT_PAGE_SIZE))
+    page_count = max(math.ceil(total_rows / page_size), 1)
+    current_page = min(max(int(st.session_state.get("patients_page", 1)), 1), page_count)
+    st.session_state["patients_page"] = current_page
+    return (current_page - 1) * page_size, current_page * page_size
+
+
+def _render_pagination(total_rows: int) -> None:
+    page_size = int(st.session_state.get("patients_page_size", DEFAULT_PAGE_SIZE))
+    page_count = max(math.ceil(total_rows / page_size), 1)
+    current_page = min(max(int(st.session_state.get("patients_page", 1)), 1), page_count)
+    start = 0 if total_rows == 0 else (current_page - 1) * page_size + 1
+    end = min(current_page * page_size, total_rows)
+
+    page_html = "".join(
+        f'<span class="patients-page-pill{" is-active" if item == current_page else ""}">{item}</span>'
+        if isinstance(item, int)
+        else '<span class="patients-page-muted">...</span>'
+        for item in _page_numbers(current_page, page_count)
+    )
+
+    st.markdown(
+        '<div class="patients-footer">'
+        f"<div>{start}-{end} de {total_rows}</div>"
+        f'<div class="patients-page-controls"><span class="patients-page-muted">‹</span>{page_html}<span class="patients-page-muted">›</span></div>'
+        '<div class="patients-page-size">'
+        "<span>Por página:</span>"
+        f'<span class="patients-page-size-select">{page_size}⌄</span>'
+        "</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render(data):
+    st.markdown(_patients_css(), unsafe_allow_html=True)
+    st.markdown('<h1 class="patients-page-title">Pacientes</h1>', unsafe_allow_html=True)
+
+    summary = _prepare_patient_rows(data)
+    _render_filters(summary)
+    filtered = _apply_filters(summary)
+
+    start, end = _pagination_bounds(len(filtered))
+    _render_table(filtered.iloc[start:end])
+    _render_pagination(len(filtered))
