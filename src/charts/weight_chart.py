@@ -1,8 +1,12 @@
 """Weight evolution charts."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pandas as pd
-import plotly.graph_objects as go
+
+if TYPE_CHECKING:  # pragma: no cover - import only used for type hints
+    import plotly.graph_objects as go
 
 
 def _weight_with_expected(weight_entries: pd.DataFrame, patient_goals: pd.DataFrame) -> pd.DataFrame:
@@ -19,9 +23,39 @@ def _weight_with_expected(weight_entries: pd.DataFrame, patient_goals: pd.DataFr
     return df
 
 
-def patient_weight_chart(weight_entries: pd.DataFrame, patient_goals: pd.DataFrame, patient_id: str) -> go.Figure:
-    df = _weight_with_expected(weight_entries, patient_goals)
-    df = df[df["patient_id"] == patient_id].sort_values("measurement_date")
+def _weight_with_expected_single(
+    weight_entries: pd.DataFrame, patient_goals: pd.DataFrame, patient_id: str
+) -> pd.DataFrame:
+    """Fast path for a single patient: pre-filter both tables before the merge.
+
+    The full-table merge computes `first_dates`/`progress` over the whole
+    dataset and discards everyone but the requested patient. When only one
+    patient is needed (Ficha do Paciente) we can skip the global groupby.
+    """
+    we = weight_entries.loc[weight_entries["patient_id"] == patient_id]
+    if we.empty:
+        return we.assign(expected_weight=pd.Series(dtype=float))
+    goals = patient_goals.loc[patient_goals["patient_id"] == patient_id]
+    if goals.empty:
+        return we.assign(expected_weight=pd.Series(dtype=float))
+    goal = goals.iloc[0]
+    df = we.sort_values("measurement_date").copy()
+    df["measurement_date"] = pd.to_datetime(df["measurement_date"])
+    first = df["measurement_date"].iloc[0]
+    total_days = max((pd.to_datetime(goal["target_date"]) - first).days, 1)
+    elapsed = (df["measurement_date"] - first).dt.days.clip(lower=0)
+    progress = (elapsed / total_days).clip(upper=1)
+    df["expected_weight"] = (
+        goal["initial_weight"] + (goal["target_weight"] - goal["initial_weight"]) * progress
+    )
+    return df
+
+
+def patient_weight_chart(weight_entries: pd.DataFrame, patient_goals: pd.DataFrame, patient_id: str) -> "go.Figure":
+    # Plotly is heavy; importing here keeps cold-start cheap for non-chart pages.
+    import plotly.graph_objects as go
+
+    df = _weight_with_expected_single(weight_entries, patient_goals, patient_id)
     fig = go.Figure()
     if df.empty:
         fig.update_layout(title="Sem dados de peso")
@@ -32,7 +66,9 @@ def patient_weight_chart(weight_entries: pd.DataFrame, patient_goals: pd.DataFra
     return fig
 
 
-def average_weight_chart(weight_entries: pd.DataFrame, patient_goals: pd.DataFrame, height: int | None = None) -> go.Figure:
+def average_weight_chart(weight_entries: pd.DataFrame, patient_goals: pd.DataFrame, height: int | None = None) -> "go.Figure":
+    import plotly.graph_objects as go
+
     df = _weight_with_expected(weight_entries, patient_goals)
 
     # Defensive: if measurement_date is missing or all-null, return empty figure

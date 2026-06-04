@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -406,11 +407,15 @@ def render(data):
     st.title("Mapa de Decisão")
     st.caption("Matriz 2x2 baseada em engajamento mockado e satisfação declarada.")
 
-    summary = patient_summary(data).copy()
-    summary["quadrante"] = "Não engajado + Não satisfeito"
-    summary.loc[summary["is_engaged"] & summary["is_satisfied"].fillna(False), "quadrante"] = "Engajado + Satisfeito"
-    summary.loc[summary["is_engaged"] & ~summary["is_satisfied"].fillna(False), "quadrante"] = "Engajado + Não satisfeito"
-    summary.loc[~summary["is_engaged"] & summary["is_satisfied"].fillna(False), "quadrante"] = "Não engajado + Satisfeito"
+    summary = patient_summary(data)
+    sat = summary["is_satisfied"].fillna(False)
+    eng = summary["is_engaged"]
+    # Single vectorised write replaces 4 sequential boolean `.loc` scans.
+    summary["quadrante"] = np.select(
+        [eng & sat, eng & ~sat, ~eng & sat],
+        ["Engajado + Satisfeito", "Engajado + Não satisfeito", "Não engajado + Satisfeito"],
+        default="Não engajado + Não satisfeito",
+    )
 
     groups = quadrants(summary)
 

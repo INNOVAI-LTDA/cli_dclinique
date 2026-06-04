@@ -1,0 +1,26 @@
+# Streamlit runtime configuration tuned for the MAP app SLA targets.
+# Documented at https://docs.streamlit.io/library/advanced-features/configuration
+
+[server]
+headless = true
+# Static serving is faster than the dev server's auto-reload machinery and
+# removes the runOnSave watcher from the hot path.
+enableStaticServing = true
+# Run on save is a dev convenience; in the benchmark we want a stable runtime.
+runOnSave = false
+# Faster file change polling (default 1s) so the server boots deterministically.
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+showErrorDetails = false
+
+[runner]
+# Skip the script rerun when no input has changed since the last run.
+fastReruns = true
+
+[theme]
+base = "light"

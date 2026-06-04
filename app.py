@@ -1,16 +1,44 @@
 """MAP Streamlit navigable shell."""
 from __future__ import annotations
 
+import importlib
+from typing import Callable
+
 import streamlit as st
 
 from src.components.sidebar import render_sidebar
-from src.mock_data import load_mock_data
 from src.navigation import init_navigation_state
-from src.pages import alertas, atualizacao_dados, ficha_paciente, mapa_decisao, pacientes, qualidade_dados, visao_geral
+
+# Page module is resolved lazily via `_route` so a cold start does not pay
+# the import cost of plotly / pandas for every page (most users only ever
+# land on a handful of them).
+_PAGE_MODULES: dict[str, str] = {
+    "Visão Geral": "src.pages.visao_geral",
+    "Mapa de Decisão": "src.pages.mapa_decisao",
+    "Pacientes": "src.pages.pacientes",
+    "Ficha do Paciente": "src.pages.ficha_paciente",
+    "Alertas": "src.pages.alertas",
+    "Atualização de Dados": "src.pages.atualizacao_dados",
+    "Qualidade dos Dados": "src.pages.qualidade_dados",
+}
+
+_route_cache: dict[str, Callable] = {}
+
+
+def _route(page: str) -> Callable:
+    """Resolve and memoise a page's `render` function on first use."""
+    if page not in _route_cache:
+        module = importlib.import_module(_PAGE_MODULES[page])
+        _route_cache[page] = module.render
+    return _route_cache[page]
 
 
 @st.cache_data(show_spinner=False)
 def get_data():
+    # Deferred import keeps pandas out of the cold-start path of app.py
+    # (Streamlit only imports the module body on the first call, after the
+    # server is already serving the health endpoint).
+    from src.mock_data import load_mock_data
     return load_mock_data()
 
 
@@ -19,17 +47,8 @@ def main() -> None:
     init_navigation_state()
     render_sidebar()
     data = get_data()
-    page = st.session_state["page"]
-    routes = {
-        "Visão Geral": visao_geral.render,
-        "Mapa de Decisão": mapa_decisao.render,
-        "Pacientes": pacientes.render,
-        "Ficha do Paciente": ficha_paciente.render,
-        "Alertas": alertas.render,
-        "Atualização de Dados": atualizacao_dados.render,
-        "Qualidade dos Dados": qualidade_dados.render,
-    }
-    routes.get(page, visao_geral.render)(data)
+    page = st.session_state.get("page", "Visão Geral")
+    _route(page)(data)
 
 
 if __name__ == "__main__":

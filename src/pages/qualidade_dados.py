@@ -1,7 +1,6 @@
 """Data quality page."""
 from __future__ import annotations
 
-import plotly.express as px
 import streamlit as st
 
 from src.components.kpi_cards import render_kpis
@@ -10,6 +9,9 @@ from src.schemas import validate_mock_schema
 
 
 def render(data):
+    # Plotly is heavy; imported only when this page is actually rendered.
+    import plotly.express as px
+
     st.title("Qualidade dos Dados")
     st.caption("Indicadores mockados para discutir lacunas antes da integração real.")
     render_kpis(quality_scores(data), columns=5)
