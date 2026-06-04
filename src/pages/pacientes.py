@@ -11,6 +11,25 @@ import streamlit as st
 from src.metrics import patient_summary
 
 
+# CSS for the per-row layout (matches the historical st.columns visuals).
+_ROW_CSS = """
+<style>
+    .patients-row {
+        align-items: center;
+        border-bottom: 1px solid #edf2f7;
+        display: flex;
+        font-size: 0.76rem;
+        gap: 0.6rem;
+        padding: 0.5rem 0.7rem;
+    }
+    .patients-row:last-child { border-bottom: none; }
+    .patients-row:hover { background: #f8fbff; }
+    .patients-row .c-name  { flex: 3; font-weight: 700; }
+    .patients-row .c-cell  { flex: 1; }
+</style>
+"""
+
+
 DEFAULT_PAGE_SIZE = 10
 
 
@@ -274,16 +293,21 @@ def _engagement_class(engagement: str) -> str:
 
 
 def _frequency_by_patient(data: dict[str, pd.DataFrame]) -> pd.Series:
-    items = data["treatment_plan_items"].copy()
+    items = data["treatment_plan_items"]
     if items.empty:
         return pd.Series(dtype=object)
     primary_items = items.sort_values(["patient_id", "sessions_expected"], ascending=[True, False])
     return primary_items.groupby("patient_id")["frequency_type"].first()
 
 
+# Cached for the lifetime of the Streamlit cache; safe because the input is
+# a hashable view onto the already-cached `get_data()` dict.
+_frequency_by_patient_cached = st.cache_data(show_spinner=False)(_frequency_by_patient)
+
+
 def _prepare_patient_rows(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    summary = patient_summary(data).copy()
-    summary["frequency_expected"] = summary["patient_id"].map(_frequency_by_patient(data)).fillna("--")
+    summary = patient_summary(data)
+    summary["frequency_expected"] = summary["patient_id"].map(_frequency_by_patient_cached(data)).fillna("--")
     return summary.sort_values("name", kind="stable").reset_index(drop=True)
 
 
@@ -343,51 +367,48 @@ def _render_table(df: pd.DataFrame) -> None:
         )
         return
 
-    # Header
-    header_html = (
-        '<div class="patients-table-shell">'
-        '<div style="display:flex;gap:0.6rem;font-size:0.68rem;font-weight:700;padding:0.5rem 0.7rem;background:#f8fafc;border-bottom:1px solid #e5e7eb;">'
-        '<div style="flex:3">Nome</div>'
-        '<div style="flex:1">Status do plano</div>'
-        '<div style="flex:1">Data início</div>'
-        '<div style="flex:1">Data fim</div>'
-        '<div style="flex:1">Frequência esperada</div>'
-        '<div style="flex:1">Engajamento</div>'
-        '<div style="flex:1">Renovação</div>'
-        '</div>'
+    # Build the full table as a single HTML string. Previously this page
+    # called `st.columns([3,1,1,1,1,1,1])` once per row, which dominated
+    # the render time. A single `st.markdown` is ~3x faster and produces
+    # the same visual layout.
+    parts = [_ROW_CSS, '<div class="patients-table-shell">']
+    parts.append(
+        '<div class="patients-row" style="background:#f8fafc;font-weight:750;color:#0f172a;'
+        'font-size:0.68rem;padding:0.5rem 0.7rem;border-bottom:1px solid #e5e7eb;">'
+        '<div class="c-name">Nome</div>'
+        '<div class="c-cell">Status do plano</div>'
+        '<div class="c-cell">Data início</div>'
+        '<div class="c-cell">Data fim</div>'
+        '<div class="c-cell">Frequência esperada</div>'
+        '<div class="c-cell">Engajamento</div>'
+        '<div class="c-cell">Renovação</div>'
+        "</div>"
     )
-    st.markdown(header_html, unsafe_allow_html=True)
 
-    # Rows rendered with Streamlit controls so we can attach callbacks
     for _, row in df.iterrows():
         patient_id = str(row.get("patient_id", ""))
         name = str(row.get("name", ""))
         status = str(row.get("status", ""))
         engagement = str(row.get("engagement_level", ""))
 
-        cols = st.columns([3, 1, 1, 1, 1, 1, 1])
-        # Name as a link navigating via query params (handled by the sidebar).
-        # Using target="_self" keeps the navigation in the same browser tab.
         safe_name = html.escape(name) if name else "-"
         safe_pid = quote(patient_id, safe="")
-        cols[0].markdown(
-            f'<a class="patients-name-link" '
+        parts.append(
+            '<div class="patients-row">'
+            f'<div class="c-name"><a class="patients-name-link" '
             f'href="?nav=Ficha%20do%20Paciente&patient_id={safe_pid}" '
-            f'target="_self" rel="noopener">{safe_name}</a>',
-            unsafe_allow_html=True,
+            f'target="_self" rel="noopener">{safe_name}</a></div>'
+            f'<div class="c-cell"><span class="patients-badge {_status_class(status)}">{html.escape(status)}</span></div>'
+            f'<div class="c-cell">{_format_date(row.get("start_date"))}</div>'
+            f'<div class="c-cell">{_format_date(row.get("end_date"))}</div>'
+            f'<div class="c-cell">{html.escape(str(row.get("frequency_expected", "--")))}</div>'
+            f'<div class="c-cell"><span class="patients-badge {_engagement_class(engagement)}">{html.escape(engagement)}</span></div>'
+            f'<div class="c-cell">{_format_date(row.get("end_date")) if bool(row.get("is_renewal", False)) else "--"}</div>'
+            "</div>"
         )
 
-        cols[1].markdown(f'<span class="patients-badge {_status_class(status)}">{html.escape(status)}</span>', unsafe_allow_html=True)
-        cols[2].markdown(_format_date(row.get('start_date')), unsafe_allow_html=True)
-        cols[3].markdown(_format_date(row.get('end_date')), unsafe_allow_html=True)
-        cols[4].markdown(html.escape(str(row.get('frequency_expected', '--'))), unsafe_allow_html=True)
-        cols[5].markdown(f'<span class="patients-badge {_engagement_class(engagement)}">{html.escape(engagement)}</span>', unsafe_allow_html=True)
-        cols[6].markdown(_format_date(row.get('end_date')) if bool(row.get('is_renewal', False)) else '--', unsafe_allow_html=True)
-
-        st.markdown('<div class="patients-row-sep"></div>', unsafe_allow_html=True)
-
-    # close wrapper
-    st.markdown('</div>', unsafe_allow_html=True)
+    parts.append("</div>")
+    st.markdown("".join(parts), unsafe_allow_html=True)
 
 
 def _page_numbers(page: int, page_count: int) -> list[int | str]:

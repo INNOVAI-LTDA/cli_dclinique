@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime
+from functools import lru_cache
 from html import escape
 from pathlib import Path
 import re
@@ -22,15 +23,18 @@ PAGE_ICONS = {
     "Qualidade dos Dados": "06_qualidade_dados.svg",
 }
 
+# Precompiled once at import time – the regex is pure and reusable across calls.
+_STROKE_RE = re.compile(r'stroke="[^"]*"')
 
+
+@lru_cache(maxsize=None)
 def _read_svg(icon_file: str) -> str:
-    svg = (ICON_DIR / icon_file).read_text(encoding="utf-8")
-    return svg
+    return (ICON_DIR / icon_file).read_text(encoding="utf-8")
 
 
+@lru_cache(maxsize=None)
 def _svg_data_uri(icon_file: str, color: str) -> str:
-    svg = _read_svg(icon_file)
-    svg = re.sub(r'stroke="[^"]*"', f'stroke="{color}"', svg)
+    svg = _STROKE_RE.sub(f'stroke="{color}"', _read_svg(icon_file))
     encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
     return f"data:image/svg+xml;base64,{encoded}"
 
