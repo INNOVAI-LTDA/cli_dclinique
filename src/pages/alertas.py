@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import html
+from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
-
-from src.components.patient_actions import render_open_patient_button
 
 
 CATEGORIES = ["Todos", "Enfermagem", "Médica", "Comercial", "Nutrição"]
@@ -147,6 +146,25 @@ def _alertas_css() -> str:
             }
 
             .alertas-cell-paciente { flex: 2.2; font-weight: 650; color: #0f172a; }
+            .alertas-name-link {
+                color: #0f172a;
+                display: inline-block;
+                font-weight: 700;
+                padding: 0.36rem 0.5rem;
+                text-decoration: none;
+            }
+
+            .alertas-name-link:hover {
+                color: #2563eb;
+                cursor: pointer;
+                text-decoration: underline;
+            }
+
+            .alertas-name-link:focus-visible {
+                border-radius: 4px;
+                outline: 2px solid #2563eb;
+                outline-offset: 2px;
+            }
             .alertas-cell-tipo { flex: 2.0; color: #1f2937; }
             .alertas-cell-desc { flex: 3.2; color: #475569; }
             .alertas-cell-prio { flex: 1.0; }
@@ -314,7 +332,6 @@ def _render_table(alerts: pd.DataFrame) -> None:
         '<div style="flex:1.0">Prioridade</div>'
         '<div style="flex:1.0">Data</div>'
         '<div style="flex:1.4">Status</div>'
-        '<div style="flex:0.9"></div>'
         "</div>"
     )
     st.markdown(header_html, unsafe_allow_html=True)
@@ -329,33 +346,32 @@ def _render_table(alerts: pd.DataFrame) -> None:
         created_at = _format_date(row.get("created_at"))
 
         safe_name = html.escape(name) if name else "-"
+        safe_pid = quote(patient_id, safe="")
         safe_type = html.escape(alert_type)
         safe_desc = html.escape(description)
         safe_priority = html.escape(priority)
         safe_status = html.escape(status)
 
+        # Patient name is rendered as a navigation link that triggers the same
+        # query-param flow used on the Pacientes page, so the click on the
+        # name opens the patient record without a separate button.
+        paciente_html = (
+            f'<a class="alertas-name-link" '
+            f'href="?nav=Ficha%20do%20Paciente&patient_id={safe_pid}" '
+            f'target="_self" rel="noopener">{safe_name}</a>'
+        )
+
         row_html = (
             '<div class="alertas-row">'
-            f'<div class="alertas-cell-paciente">{safe_name}</div>'
+            f'<div class="alertas-cell-paciente">{paciente_html}</div>'
             f'<div class="alertas-cell-tipo">{safe_type}</div>'
             f'<div class="alertas-cell-desc">{safe_desc}</div>'
             f'<div class="alertas-cell-prio"><span class="alertas-badge {_priority_class(priority)}">{safe_priority}</span></div>'
             f'<div class="alertas-cell-data">{created_at}</div>'
             f'<div class="alertas-cell-status"><span class="alertas-badge {_status_class(status)}">{safe_status}</span></div>'
-            '<div class="alertas-cell-action"></div>'
             "</div>"
         )
         st.markdown(row_html, unsafe_allow_html=True)
-
-        # Place the real "Abrir ficha" button under the action column so the
-        # click handler remains fully interactive.
-        action_cols = st.columns([2.2, 2.0, 3.2, 1.0, 1.0, 1.4, 0.9])
-        with action_cols[6]:
-            render_open_patient_button(
-                patient_id,
-                key=f"alert_{row.get('alert_id', patient_id)}",
-                label="Abrir ficha",
-            )
 
     st.markdown("</div>", unsafe_allow_html=True)
 
