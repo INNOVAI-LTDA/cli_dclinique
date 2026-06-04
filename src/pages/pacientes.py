@@ -8,7 +8,11 @@ from urllib.parse import quote
 import pandas as pd
 import streamlit as st
 
-from src.components.add_patient import merge_extra_patients, render_add_patient_control
+from src.components.add_patient import (
+    merge_extra_patients,
+    render_add_patient_form,
+    render_add_patient_toggle,
+)
 from src.metrics import patient_summary
 
 
@@ -361,14 +365,18 @@ def _render_filters(summary: pd.DataFrame) -> None:
 
 
 def _render_add_patient_row(data: dict[str, pd.DataFrame]) -> None:
-    """Render the add-patient toggle / form below the filter row.
+    """Render the add-patient toggle (right-aligned) and, if open, the form.
 
-    Right-aligned to mirror the "Limpar filtros" button column. When the
-    form is closed only the toggle button is rendered (single widget).
+    The toggle button is right-aligned to mirror the "Limpar filtros"
+    column. When the form is open, it renders full-width on its own row
+    below the toggle — that way the form fields are not squashed into a
+    narrow side column.
     """
-    _cols = st.columns([5.4, 0.9])
-    with _cols[1]:
-        render_add_patient_control(data)
+    _button_cols = st.columns([5.4, 0.9])
+    with _button_cols[1]:
+        render_add_patient_toggle()
+    if st.session_state.get("add_patient_open", False):
+        render_add_patient_form(data)
 
 
 def _render_table(df: pd.DataFrame) -> None:

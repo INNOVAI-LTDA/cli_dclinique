@@ -132,52 +132,84 @@ def _close_form() -> None:
     st.session_state[_OPEN_KEY] = False
 
 
-def render_add_patient_control(data: dict[str, pd.DataFrame] | None = None) -> None:
-    """Render the toggle button and, when open, the add-patient form.
+def render_add_patient_toggle() -> None:
+    """Render the ``+ Adicionar paciente`` button (closed state only).
 
-    The caller controls positioning via its own ``st.columns`` / container.
-    When the toggle is closed nothing is rendered, so the closed state costs
-    effectively zero.
+    The button is meant to live in a narrow right-aligned column. When the
+    form is already open this function renders nothing — the open state
+    owns its own row via ``render_add_patient_form``.
     """
     _ensure_state()
-    is_open = bool(st.session_state[_OPEN_KEY])
+    if st.session_state[_OPEN_KEY]:
+        return
+    st.button(
+        "+ Adicionar paciente",
+        key="add_patient_toggle",
+        on_click=_open_form,
+        type="primary",
+    )
 
-    if not is_open:
-        st.button(
-            "+ Adicionar paciente",
-            key="add_patient_toggle",
-            on_click=_open_form,
-            type="primary",
-        )
+
+def render_add_patient_form(data: dict[str, pd.DataFrame] | None = None) -> None:
+    """Render the add-patient form full-width below the toggle row.
+
+    No-op when the form is closed. Caller is expected to gate on
+    ``st.session_state["add_patient_open"]`` or simply call this and let
+    the helper self-gate.
+    """
+    _ensure_state()
+    if not st.session_state[_OPEN_KEY]:
         return
 
-    with st.form(_FORM_KEY, clear_on_submit=True):
+    with st.container(border=True):
         st.markdown(
-            '<p style="color:#0f172a;font-size:0.92rem;font-weight:700;'
-            'margin:0 0 0.5rem;">Cadastrar novo paciente</p>',
+            '<p style="color:#0f172a;font-size:0.95rem;font-weight:700;'
+            'margin:0 0 0.6rem;">Cadastrar novo paciente</p>',
             unsafe_allow_html=True,
         )
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            st.text_input("Nome completo", key=_NAME_KEY, placeholder="Ex.: Maria de Souza")
-        with c2:
-            st.text_input("Prontuário", key=_RECORD_KEY, placeholder="Opcional")
-        c3, c4 = st.columns([1, 1])
-        with c3:
-            st.text_input("Telefone", key=_PHONE_KEY, placeholder="(00) 00000-0000")
-        with c4:
-            st.number_input(
-                "Idade",
-                min_value=0,
-                max_value=120,
-                step=1,
-                value=0,
-                format="%d",
-                key=_AGE_KEY,
-            )
+        with st.form(_FORM_KEY, clear_on_submit=True):
+            c1, c2 = st.columns([2, 1])
+            with c1:
+                st.text_input(
+                    "Nome completo",
+                    key=_NAME_KEY,
+                    placeholder="Ex.: Maria de Souza",
+                )
+            with c2:
+                st.text_input(
+                    "Prontuário",
+                    key=_RECORD_KEY,
+                    placeholder="Opcional",
+                )
+            c3, c4 = st.columns([1, 1])
+            with c3:
+                st.text_input(
+                    "Telefone",
+                    key=_PHONE_KEY,
+                    placeholder="(00) 00000-0000",
+                )
+            with c4:
+                st.number_input(
+                    "Idade",
+                    min_value=0,
+                    max_value=120,
+                    step=1,
+                    value=0,
+                    format="%d",
+                    key=_AGE_KEY,
+                )
 
-        submitted = st.form_submit_button("Cadastrar", type="primary")
-        if submitted:
-            _handle_submit(data)
-
-    st.button("Cancelar", key="add_patient_cancel", on_click=_close_form)
+            action_cols = st.columns([1, 1, 6])
+            with action_cols[0]:
+                submitted = st.form_submit_button(
+                    "Cadastrar", type="primary", use_container_width=True
+                )
+            with action_cols[1]:
+                cancelled = st.form_submit_button(
+                    "Cancelar", use_container_width=True
+                )
+            if submitted:
+                _handle_submit(data)
+            elif cancelled:
+                _close_form()
+                st.rerun()
