@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from src.charts.weight_chart import patient_weight_chart
+from src.components.add_patient import merge_extra_patients
 from src.components.empty_states import render_empty
 from src.components.patient_header import render_patient_header
 from src.metrics import patient_summary
@@ -307,6 +308,10 @@ def _render_chart(weight_entries: pd.DataFrame, patient_goals: pd.DataFrame, pat
 def render(data) -> None:
     st.markdown(_page_css(), unsafe_allow_html=True)
 
+    # Merge session-added patients (registered via the add-patient widget)
+    # so that clicking a freshly-added patient's name does not 404.
+    data = merge_extra_patients(data)
+
     summary = patient_summary(data)
     if summary.empty:
         render_empty("Nenhum paciente disponível para exibir a ficha.")
@@ -315,7 +320,11 @@ def render(data) -> None:
     _render_back_link()
 
     patient_id = _render_patient_switcher(summary)
-    patient = summary.loc[summary["patient_id"] == patient_id].iloc[0].to_dict()
+    match = summary.loc[summary["patient_id"] == patient_id]
+    if match.empty:
+        render_empty("Paciente não encontrado.")
+        return
+    patient = match.iloc[0].to_dict()
     render_patient_header(patient, status_label=patient.get("status") or "—")
 
     goals = data["patient_goals"][data["patient_goals"]["patient_id"] == patient_id]

@@ -8,6 +8,7 @@ from urllib.parse import quote
 import pandas as pd
 import streamlit as st
 
+from src.components.add_patient import merge_extra_patients, render_add_patient_control
 from src.metrics import patient_summary
 
 
@@ -359,6 +360,17 @@ def _render_filters(summary: pd.DataFrame) -> None:
     # filters rendered above; table is rendered by `_render_table`
 
 
+def _render_add_patient_row(data: dict[str, pd.DataFrame]) -> None:
+    """Render the add-patient toggle / form below the filter row.
+
+    Right-aligned to mirror the "Limpar filtros" button column. When the
+    form is closed only the toggle button is rendered (single widget).
+    """
+    _cols = st.columns([5.4, 0.9])
+    with _cols[1]:
+        render_add_patient_control(data)
+
+
 def _render_table(df: pd.DataFrame) -> None:
     if df.empty:
         st.markdown(
@@ -460,8 +472,15 @@ def render(data):
     st.markdown(_patients_css(), unsafe_allow_html=True)
     st.markdown('<h1 class="patients-page-title">Pacientes</h1>', unsafe_allow_html=True)
 
+    # Merge session-added patients (registered via the add-patient widget)
+    # before any cached metric runs — `merge_extra_patients` returns the
+    # same dict instance when there are no extras, keeping the
+    # `@st.cache_data` consumers warm.
+    data = merge_extra_patients(data)
+
     summary = _prepare_patient_rows(data)
     _render_filters(summary)
+    _render_add_patient_row(data)
     filtered = _apply_filters(summary)
 
     start, end = _pagination_bounds(len(filtered))
