@@ -7,9 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from src.charts.weight_chart import patient_weight_chart
-from src.components.add_patient import merge_extra_patients
 from src.components.empty_states import render_empty
-from src.components.ficha import merge_extra_fichas
 from src.components.patient_header import render_patient_header
 from src.metrics import patient_summary
 from src.navigation import go_to
@@ -309,12 +307,13 @@ def _render_chart(weight_entries: pd.DataFrame, patient_goals: pd.DataFrame, pat
 def render(data) -> None:
     st.markdown(_page_css(), unsafe_allow_html=True)
 
-    # Merge session-added patients (registered via the add-patient widget)
-    # so that clicking a freshly-added patient's name does not 404, and
-    # session-added fichas so that a ficha just cadastrada for that
-    # patient shows up immediately on the detail page.
-    data = merge_extra_patients(data)
-    data = merge_extra_fichas(data)
+    # The cadastro form's submit handler clears the cached ``get_data``
+    # and sets ``_data_dirty``. Re-read the CSVs if the dirty flag is
+    # set so a freshly-cadastrada ficha shows up on the same render
+    # without an extra rerun.
+    if st.session_state.pop("_data_dirty", False):
+        from src.data_layer import load_all
+        data = load_all()
 
     summary = patient_summary(data)
     if summary.empty:

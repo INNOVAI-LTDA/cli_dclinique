@@ -1,9 +1,11 @@
 """Unit tests for ``src.components.ficha`` helpers.
 
-Mirrors the add-patient unit test suite: covers session-state seeding,
-ID generation, the merge contract, ``patient_has_ficha``, and the
-``_handle_ficha_submit`` handler. Uses ``FakeSessionState`` from
-``conftest.py`` so no Streamlit runtime is required.
+Mirrors the add-patient unit test suite: covers id generation, the
+``patient_has_ficha`` helper, and the ``_handle_submit`` handler. Uses
+``FakeSessionState`` from ``conftest.py`` so no Streamlit runtime is
+required. Each test runs against a per-test copy of the seed CSVs (the
+``csv_dir`` fixture), so appends never leak between tests or into the
+developer's local checkout.
 """
 from __future__ import annotations
 
@@ -12,45 +14,10 @@ import pytest
 
 from src.components import ficha as fc
 from src.components.ficha import (
-    _ensure_state,
-    _next_goal_id,
-    _next_item_id,
-    _next_plan_id,
-    _next_weight_id,
-    merge_extra_fichas,
+    _handle_submit,
     patient_has_ficha,
-    reset_extra_fichas,
 )
-
-
-# ---------------------------------------------------------------------------
-# Session-state init & reset
-# ---------------------------------------------------------------------------
-
-
-def test_ensure_state_seeds_default_keys(fake_session_state):
-    _ensure_state()
-    for key in (
-        "extra_treatment_plans",
-        "extra_treatment_plan_items",
-        "extra_patient_goals",
-        "extra_weight_entries",
-    ):
-        assert fake_session_state[key] == []
-
-
-def test_reset_clears_all_ficha_state(fake_session_state):
-    fake_session_state["extra_treatment_plans"] = [{"plan_id": "plan_new_001"}]
-    fake_session_state["extra_patient_goals"] = [{"goal_id": "goal_new_001"}]
-    fake_session_state["extra_treatment_plan_items"] = [{"plan_item_id": "item_new_001"}]
-    fake_session_state["extra_weight_entries"] = [{"weight_id": "w_new_001"}]
-
-    reset_extra_fichas()
-
-    assert fake_session_state["extra_treatment_plans"] == []
-    assert fake_session_state["extra_patient_goals"] == []
-    assert fake_session_state["extra_treatment_plan_items"] == []
-    assert fake_session_state["extra_weight_entries"] == []
+from src.data_layer import load_table, next_id
 
 
 # ---------------------------------------------------------------------------
@@ -58,37 +25,27 @@ def test_reset_clears_all_ficha_state(fake_session_state):
 # ---------------------------------------------------------------------------
 
 
-def test_next_plan_id_starts_at_001(base_data):
-    assert _next_plan_id(base_data) == "plan_new_001"
+def test_next_plan_id_starts_at_001(csv_dir):
+    assert next_id("treatment_plans") == "plan_new_001"
 
 
-def test_next_goal_id_starts_at_001(base_data):
-    assert _next_goal_id(base_data) == "goal_new_001"
+def test_next_goal_id_starts_at_001(csv_dir):
+    assert next_id("patient_goals") == "goal_new_001"
 
 
-def test_next_item_id_starts_at_001(base_data):
-    assert _next_item_id(base_data) == "item_new_001"
+def test_next_item_id_starts_at_001(csv_dir):
+    assert next_id("treatment_plan_items") == "item_new_001"
 
 
-def test_next_weight_id_starts_at_001(base_data):
-    assert _next_weight_id(base_data) == "w_new_001"
+def test_next_weight_id_starts_at_001(csv_dir):
+    assert next_id("weight_entries") == "w_new_001"
 
 
-def test_next_plan_id_increments_with_session_extras(fake_session_state, base_data):
-    fake_session_state["extra_treatment_plans"] = [
-        {"plan_id": "plan_new_001", "patient_id": "pat_001", "budget_code": "x",
-         "issue_date": pd.Timestamp.today().normalize(),
-         "start_date": pd.Timestamp.today().normalize(),
-         "end_date": pd.Timestamp.today().normalize(),
-         "status": "Ativo", "main_goal": "g", "is_renewal": False, "notes": ""}
-    ]
-    assert _next_plan_id(base_data) == "plan_new_002"
-
-
-def test_next_item_id_avoids_existing_fixture_ids(base_data):
-    # base fixture has item_001..item_N; ensure we don't collide
-    new_id = _next_item_id(base_data)
-    assert not base_data["treatment_plan_items"]["plan_item_id"].astype(str).eq(new_id).any()
+def test_next_item_id_avoids_existing_seed_ids(csv_dir):
+    # seed has item_001..item_NN; ensure the helper skips them
+    new_id = next_id("treatment_plan_items")
+    df = load_table("treatment_plan_items")
+    assert not df["plan_item_id"].astype(str).eq(new_id).any()
 
 
 # ---------------------------------------------------------------------------
@@ -96,208 +53,172 @@ def test_next_item_id_avoids_existing_fixture_ids(base_data):
 # ---------------------------------------------------------------------------
 
 
-def test_patient_has_ficha_true_for_existing_plan(base_data):
-    # pat_001 has a plan in the fixture
-    assert patient_has_ficha("pat_001", base_data) is True
+def test_patient_has_ficha_true_for_existing_plan(csv_dir):
+    # pat_001 has a plan in the seed fixture
+    assert patient_has_ficha("pat_001") is True
 
 
-def test_patient_has_ficha_false_for_missing_patient(base_data):
-    assert patient_has_ficha("pat_does_not_exist", base_data) is False
+def test_patient_has_ficha_false_for_missing_patient(csv_dir):
+    assert patient_has_ficha("pat_does_not_exist") is False
 
 
-def test_patient_has_ficha_false_when_no_plan_in_base_data(base_data):
-    """pat_001 has a plan, but if we filter it out, the helper says False."""
-    pruned = dict(base_data)
-    pruned["treatment_plans"] = base_data["treatment_plans"].iloc[0:0]
-    assert patient_has_ficha("pat_001", pruned) is False
+def test_patient_has_ficha_false_when_no_plan_in_seed(csv_dir):
+    """pat_001 has a plan in the seed, but if we wipe the plan table, the helper says False."""
+    from src.data_layer import csv_dir as data_csv_dir
+
+    plans_path = data_csv_dir() / "treatment_plans.csv"
+    plans_path.write_text("plan_id,patient_id,budget_code,issue_date,start_date,end_date,status,main_goal,is_renewal,notes\n", encoding="utf-8")
+    assert patient_has_ficha("pat_001") is False
 
 
-def test_patient_has_ficha_handles_empty_data():
-    assert patient_has_ficha("pat_001", {}) is False
-    assert patient_has_ficha("pat_001", None) is False
+def test_patient_has_ficha_reflects_recent_appends(csv_dir):
+    from src.data_layer import append_row
 
-
-def test_patient_has_ficha_uses_session_extras(fake_session_state, base_data):
-    fake_session_state["extra_treatment_plans"] = [
-        {"plan_id": "plan_new_001", "patient_id": "pat_new_999",
-         "budget_code": "x", "issue_date": pd.Timestamp.today().normalize(),
-         "start_date": pd.Timestamp.today().normalize(),
-         "end_date": pd.Timestamp.today().normalize(),
-         "status": "Ativo", "main_goal": "g", "is_renewal": False, "notes": ""}
-    ]
-    merged = merge_extra_fichas(base_data)
-    assert patient_has_ficha("pat_new_999", merged) is True
-
-
-# ---------------------------------------------------------------------------
-# merge_extra_fichas
-# ---------------------------------------------------------------------------
-
-
-def test_merge_fichas_returns_same_dict_when_no_extras(fake_session_state, base_data):
-    out = merge_extra_fichas(base_data)
-    assert out is base_data
-
-
-def test_merge_fichas_appends_plan_goal_item_weight(fake_session_state, base_data):
-    fake_session_state["extra_treatment_plans"] = [
-        {"plan_id": "plan_new_001", "patient_id": "pat_new_999", "budget_code": "orc_x",
-         "issue_date": pd.Timestamp.today().normalize(),
-         "start_date": pd.Timestamp.today().normalize(),
-         "end_date": pd.Timestamp.today().normalize(),
-         "status": "Ativo", "main_goal": "Emagrecimento", "is_renewal": False, "notes": "ok"}
-    ]
-    fake_session_state["extra_patient_goals"] = [
-        {"goal_id": "goal_new_001", "patient_id": "pat_new_999", "plan_id": "plan_new_001",
-         "goal_type": "Emagrecimento", "initial_weight": 80.0, "target_weight": 70.0,
-         "target_date": pd.Timestamp.today().normalize(), "goal_notes": "ok"}
-    ]
-    fake_session_state["extra_treatment_plan_items"] = [
-        {"plan_item_id": "item_new_001", "plan_id": "plan_new_001", "patient_id": "pat_new_999",
-         "budget_code": "orc_x", "raw_name": "Consulta", "category": "Avaliação",
-         "sessions_expected": 1, "frequency_text": "1 sessão - mensal", "frequency_type": "Mensal",
-         "source": "Dados manuais", "needs_manual_review": False}
-    ]
-    fake_session_state["extra_weight_entries"] = [
-        {"weight_id": "w_new_001", "patient_id": "pat_new_999", "plan_id": "plan_new_001",
-         "measurement_date": pd.Timestamp.today().normalize(), "weight": 79.5,
-         "source": "Dados manuais", "notes": "ok"}
-    ]
-    out = merge_extra_fichas(base_data)
-    assert out is not base_data
-    assert len(out["treatment_plans"]) == len(base_data["treatment_plans"]) + 1
-    assert len(out["patient_goals"]) == len(base_data["patient_goals"]) + 1
-    assert len(out["treatment_plan_items"]) == len(base_data["treatment_plan_items"]) + 1
-    assert len(out["weight_entries"]) == len(base_data["weight_entries"]) + 1
-    # The new plan row should preserve the booleans/dates types
-    new_plan = out["treatment_plans"].iloc[-1].to_dict()
-    assert new_plan["is_renewal"] is False or new_plan["is_renewal"] is False
-    assert isinstance(new_plan["status"], str)
+    append_row(
+        "treatment_plans",
+        {
+            "plan_id": "plan_new_001",
+            "patient_id": "pat_new_999",
+            "budget_code": "orc_x",
+            "issue_date": pd.Timestamp.today().normalize(),
+            "start_date": pd.Timestamp.today().normalize(),
+            "end_date": pd.Timestamp.today().normalize(),
+            "status": "Ativo",
+            "main_goal": "g",
+            "is_renewal": False,
+            "notes": "",
+        },
+    )
+    assert patient_has_ficha("pat_new_999") is True
 
 
 # ---------------------------------------------------------------------------
-# _handle_ficha_submit
+# _handle_submit
 # ---------------------------------------------------------------------------
 
 
-def test_handle_ficha_submit_writes_plan_and_goal(fake_session_state, base_data):
-    """End-to-end: filling the form values and calling the submit handler
-    should create plan/goal rows and navigate to the Ficha page."""
-    fake_session_state["extra_patients"] = [
-        {"patient_id": "pat_new_999", "name": "Maria", "normalized_name": "maria",
-         "medical_record": None, "phone": None, "age": 30,
-         "created_at": pd.Timestamp.today().normalize()}
-    ]
-    fake_session_state["cadastro_ficha_age"] = 30
-    fake_session_state["cadastro_ficha_objetivo"] = "Emagrecimento"
-    fake_session_state["cadastro_ficha_peso_inicial"] = 80.0
-    fake_session_state["cadastro_ficha_peso_atual"] = 79.5
-    fake_session_state["cadastro_ficha_peso_meta"] = 70.0
-    fake_session_state["cadastro_ficha_status"] = "Ativo"
-    fake_session_state["cadastro_ficha_orcamento"] = "orc_test_001"
-    fake_session_state["cadastro_ficha_renovacao"] = False
-    fake_session_state["cadastro_ficha_resumo"] = "Plano de teste."
+def _cadastro_form_state(
+    fake_session_state,
+    *,
+    age: int = 30,
+    objetivo: str = "Emagrecimento",
+    peso_inicial: float = 80.0,
+    peso_atual: float = 79.5,
+    peso_meta: float = 70.0,
+    status: str = "Ativo",
+    orcamento: str = "orc_test_001",
+    renovacao: bool = False,
+    resumo: str = "Plano de teste.",
+    items: pd.DataFrame | None = None,
+):
+    fake_session_state["cadastro_ficha_age"] = age
+    fake_session_state["cadastro_ficha_objetivo"] = objetivo
+    fake_session_state["cadastro_ficha_peso_inicial"] = peso_inicial
+    fake_session_state["cadastro_ficha_peso_atual"] = peso_atual
+    fake_session_state["cadastro_ficha_peso_meta"] = peso_meta
+    fake_session_state["cadastro_ficha_status"] = status
+    fake_session_state["cadastro_ficha_orcamento"] = orcamento
+    fake_session_state["cadastro_ficha_renovacao"] = renovacao
+    fake_session_state["cadastro_ficha_resumo"] = resumo
     fake_session_state["cadastro_ficha_inicio"] = pd.Timestamp.today().normalize().date()
     fake_session_state["cadastro_ficha_fim"] = (
         pd.Timestamp.today().normalize() + pd.Timedelta(days=60)
     ).date()
+    if items is not None:
+        fake_session_state["cadastro_ficha_items"] = items
 
-    fc._handle_submit("pat_new_999", base_data)
 
-    plans = fake_session_state["extra_treatment_plans"]
-    goals = fake_session_state["extra_patient_goals"]
-    assert len(plans) == 1
-    assert len(goals) == 1
-    assert plans[0]["patient_id"] == "pat_new_999"
-    assert goals[0]["plan_id"] == plans[0]["plan_id"]
+def test_handle_ficha_submit_writes_plan_and_goal(fake_session_state, csv_dir):
+    _cadastro_form_state(fake_session_state)
+
+    _handle_submit("pat_001")
+
+    plans = load_table("treatment_plans")
+    goals = load_table("patient_goals")
+    # 1 new plan, 1 new goal
+    assert len(plans) == 9  # 8 seed + 1
+    assert len(goals) == 9  # 8 seed + 1
+    new_plan = plans.iloc[-1]
+    new_goal = goals.iloc[-1]
+    assert new_plan["patient_id"] == "pat_001"
+    assert new_goal["plan_id"] == new_plan["plan_id"]
     # Navigation side effect
     assert fake_session_state["page"] == "Ficha do Paciente"
-    assert fake_session_state["selected_patient_id"] == "pat_new_999"
+    assert fake_session_state["selected_patient_id"] == "pat_001"
 
 
 def test_handle_ficha_submit_creates_weight_entry_when_peso_atual_positive(
-    fake_session_state, base_data
+    fake_session_state, csv_dir
 ):
-    fake_session_state["extra_patients"] = [
-        {"patient_id": "pat_new_999", "name": "Maria", "normalized_name": "maria",
-         "medical_record": None, "phone": None, "age": 30,
-         "created_at": pd.Timestamp.today().normalize()}
-    ]
-    fake_session_state["cadastro_ficha_age"] = 30
-    fake_session_state["cadastro_ficha_objetivo"] = ""
-    fake_session_state["cadastro_ficha_peso_inicial"] = 0.0
-    fake_session_state["cadastro_ficha_peso_atual"] = 82.5
-    fake_session_state["cadastro_ficha_peso_meta"] = 0.0
-    fake_session_state["cadastro_ficha_status"] = "Aguardando início"
-    fake_session_state["cadastro_ficha_inicio"] = pd.Timestamp.today().normalize().date()
-    fake_session_state["cadastro_ficha_fim"] = (
-        pd.Timestamp.today().normalize() + pd.Timedelta(days=30)
-    ).date()
+    _cadastro_form_state(
+        fake_session_state,
+        objetivo="",
+        peso_inicial=0.0,
+        peso_atual=82.5,
+        peso_meta=0.0,
+        status="Aguardando início",
+    )
 
-    fc._handle_submit("pat_new_999", base_data)
+    _handle_submit("pat_001")
 
-    weights = fake_session_state["extra_weight_entries"]
-    assert len(weights) == 1
-    assert weights[0]["weight"] == 82.5
-    assert weights[0]["patient_id"] == "pat_new_999"
+    weights = load_table("weight_entries")
+    assert len(weights) == 16  # 15 seed + 1
+    new_weight = weights.iloc[-1]
+    assert float(new_weight["weight"]) == 82.5
+    assert new_weight["patient_id"] == "pat_001"
 
 
 def test_handle_ficha_submit_skips_weight_entry_when_peso_atual_zero(
-    fake_session_state, base_data
+    fake_session_state, csv_dir
 ):
-    fake_session_state["extra_patients"] = [
-        {"patient_id": "pat_new_999", "name": "Maria", "normalized_name": "maria",
-         "medical_record": None, "phone": None, "age": 30,
-         "created_at": pd.Timestamp.today().normalize()}
-    ]
-    fake_session_state["cadastro_ficha_age"] = 30
-    fake_session_state["cadastro_ficha_objetivo"] = ""
-    fake_session_state["cadastro_ficha_peso_inicial"] = 0.0
-    fake_session_state["cadastro_ficha_peso_atual"] = 0.0  # zero → no weight entry
-    fake_session_state["cadastro_ficha_peso_meta"] = 0.0
-    fake_session_state["cadastro_ficha_status"] = "Aguardando início"
-    fake_session_state["cadastro_ficha_inicio"] = pd.Timestamp.today().normalize().date()
-    fake_session_state["cadastro_ficha_fim"] = (
-        pd.Timestamp.today().normalize() + pd.Timedelta(days=30)
-    ).date()
-
-    fc._handle_submit("pat_new_999", base_data)
-
-    assert fake_session_state["extra_weight_entries"] == []
-
-
-def test_handle_ficha_submit_skips_items_with_empty_name(fake_session_state, base_data):
-    """Items whose name is empty must be filtered out (the data editor
-    starts with 3 empty rows by default)."""
-    fake_session_state["extra_patients"] = [
-        {"patient_id": "pat_new_999", "name": "Maria", "normalized_name": "maria",
-         "medical_record": None, "phone": None, "age": 30,
-         "created_at": pd.Timestamp.today().normalize()}
-    ]
-    fake_session_state["cadastro_ficha_age"] = 30
-    fake_session_state["cadastro_ficha_objetivo"] = "Emagrecimento"
-    fake_session_state["cadastro_ficha_peso_inicial"] = 0.0
-    fake_session_state["cadastro_ficha_peso_atual"] = 0.0
-    fake_session_state["cadastro_ficha_peso_meta"] = 0.0
-    fake_session_state["cadastro_ficha_status"] = "Ativo"
-    fake_session_state["cadastro_ficha_inicio"] = pd.Timestamp.today().normalize().date()
-    fake_session_state["cadastro_ficha_fim"] = (
-        pd.Timestamp.today().normalize() + pd.Timedelta(days=30)
-    ).date()
-    # Simulate the user filling two of the three default rows
-    fake_session_state["cadastro_ficha_items"] = pd.DataFrame(
-        [
-            {"nome": "Injetáveis", "categoria": "EV", "sessoes": 8, "frequencia": "Semanal"},
-            {"nome": "", "categoria": "", "sessoes": 0, "frequencia": "Quinzenal"},
-            {"nome": "Manipulado", "categoria": "Med", "sessoes": 1, "frequencia": "Diário"},
-        ]
+    _cadastro_form_state(
+        fake_session_state,
+        objetivo="",
+        peso_inicial=0.0,
+        peso_atual=0.0,  # zero → no weight entry
+        peso_meta=0.0,
+        status="Aguardando início",
     )
 
-    fc._handle_submit("pat_new_999", base_data)
+    _handle_submit("pat_001")
 
-    items = fake_session_state["extra_treatment_plan_items"]
-    assert len(items) == 2
-    assert items[0]["raw_name"] == "Injetáveis"
-    assert items[0]["frequency_type"] == "Semanal"
-    assert items[0]["frequency_text"] == "8 sessões - semanal"
-    assert items[1]["raw_name"] == "Manipulado"
+    weights = load_table("weight_entries")
+    assert len(weights) == 15  # seed only
+
+
+def test_handle_ficha_submit_skips_items_with_empty_name(fake_session_state, csv_dir):
+    """Items whose name is empty must be filtered out (the data editor
+    starts with 3 empty rows by default)."""
+    _cadastro_form_state(
+        fake_session_state,
+        peso_inicial=0.0,
+        peso_atual=0.0,
+        peso_meta=0.0,
+        status="Ativo",
+        items=pd.DataFrame(
+            [
+                {"nome": "Injetáveis", "categoria": "EV", "sessoes": 8, "frequencia": "Semanal"},
+                {"nome": "", "categoria": "", "sessoes": 0, "frequencia": "Quinzenal"},
+                {"nome": "Manipulado", "categoria": "Med", "sessoes": 1, "frequencia": "Diário"},
+            ]
+        ),
+    )
+
+    _handle_submit("pat_001")
+
+    items = load_table("treatment_plan_items")
+    assert len(items) == 19  # 17 seed + 2
+    assert items.iloc[-2]["raw_name"] == "Injetáveis"
+    assert items.iloc[-2]["frequency_type"] == "Semanal"
+    assert items.iloc[-2]["frequency_text"] == "8 sessões - semanal"
+    assert items.iloc[-1]["raw_name"] == "Manipulado"
+
+
+def test_handle_ficha_submit_updates_patient_age(fake_session_state, csv_dir):
+    _cadastro_form_state(fake_session_state, age=55)
+
+    _handle_submit("pat_001")
+
+    patients = load_table("patients")
+    row = patients[patients["patient_id"] == "pat_001"].iloc[0]
+    assert int(row["age"]) == 55

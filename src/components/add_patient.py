@@ -1,10 +1,13 @@
-"""Add-patient widget: toggle button, form, and session-state merge helper.
+"""Add-patient widget: toggle button, form, and submit handler.
 
-The MAP shell keeps all data in memory; new patients live in
-``st.session_state["extra_patients"]`` (a list of dicts that matches the
-``EXPECTED_SCHEMAS["patients"]`` contract — see ``src/schemas.py``) for the
-lifetime of the session. ``merge_extra_patients`` is the single read path used
-by the pages that need to see those rows.
+The MAP shell's source of truth is the CSV layer at ``data/csv/``
+(see :mod:`src.data_layer`). The widget on this page just writes a new
+row to ``patients.csv`` via :func:`src.data_layer.append_row` and then
+invalidates the Streamlit cache so the next render reads it.
+
+Persistence across navigations, F5, tab close, and Streamlit server
+restart is now provided by the CSVs themselves — no in-memory session
+state and no JSON sidecar are needed.
 """
 from __future__ import annotations
 
@@ -13,9 +16,8 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from src.schemas import EXPECTED_SCHEMAS
+from src.data_layer import append_row, load_table, next_id
 
-_EXTRA_KEY = "extra_patients"
 _OPEN_KEY = "add_patient_open"
 _FORM_KEY = "add_patient_form"
 _NAME_KEY = "add_patient_name"
@@ -24,68 +26,20 @@ _PHONE_KEY = "add_patient_phone"
 _AGE_KEY = "add_patient_age"
 
 
-def _ensure_state() -> None:
-    st.session_state.setdefault(_EXTRA_KEY, [])
-    st.session_state.setdefault(_OPEN_KEY, False)
+def _existing_normalized_names() -> set[str]:
+    """Return the lower-cased, trimmed names already in ``patients.csv``.
 
-
-def _existing_name_keys(data: dict[str, pd.DataFrame] | None) -> set[str]:
-    keys: set[str] = set()
-    if data is not None and "patients" in data and not data["patients"].empty:
-        keys.update(
-            data["patients"]["normalized_name"].dropna().astype(str).str.lower().tolist()
-        )
-    for row in st.session_state.get(_EXTRA_KEY, []):
-        name = row.get("name")
-        if name:
-            keys.add(str(name).strip().lower())
-    return keys
-
-
-def _next_patient_id(data: dict[str, pd.DataFrame]) -> str:
-    used: set[str] = set()
-    if data is not None and "patients" in data and not data["patients"].empty:
-        used.update(data["patients"]["patient_id"].dropna().astype(str).tolist())
-    for row in st.session_state.get(_EXTRA_KEY, []):
-        pid = row.get("patient_id")
-        if pid:
-            used.add(str(pid))
-    counter = 1
-    while f"pat_new_{counter:03d}" in used:
-        counter += 1
-    return f"pat_new_{counter:03d}"
-
-
-def merge_extra_patients(data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
-    """Return ``data`` with any session-added patients appended to ``patients``.
-
-    Returns the **same** dict instance when there are no extra patients, so
-    ``@st.cache_data`` consumers (e.g. ``patient_summary``) keep their cache.
+    Reads the CSV directly (not the cached ``load_all``) so the check
+    reflects the on-disk state at the moment of submit — even if a
+    previous render left a stale entry in the Streamlit cache.
     """
-    _ensure_state()
-    extras = st.session_state[_EXTRA_KEY]
-    if not extras:
-        return data
-    if data is None or "patients" not in data:
-        return data
-
-    columns = EXPECTED_SCHEMAS["patients"]
-    extras_df = pd.DataFrame(extras, columns=columns)
-    extras_df["created_at"] = pd.to_datetime(extras_df["created_at"], errors="coerce")
-    merged_patients = pd.concat([data["patients"], extras_df], ignore_index=True)
-
-    new_data = dict(data)
-    new_data["patients"] = merged_patients
-    return new_data
+    df = load_table("patients")
+    if df.empty or "normalized_name" not in df.columns:
+        return set()
+    return set(df["normalized_name"].dropna().astype(str).str.strip().str.lower().tolist())
 
 
-def reset_extra_patients() -> None:
-    """Clear all session-added patients. Useful for tests / debug only."""
-    st.session_state[_EXTRA_KEY] = []
-    st.session_state[_OPEN_KEY] = False
-
-
-def _handle_submit(data: dict[str, pd.DataFrame]) -> bool:
+def _handle_submit() -> bool:
     name = str(st.session_state.get(_NAME_KEY, "")).strip()
     record = str(st.session_state.get(_RECORD_KEY, "")).strip()
     phone = str(st.session_state.get(_PHONE_KEY, "")).strip()
@@ -96,7 +50,7 @@ def _handle_submit(data: dict[str, pd.DataFrame]) -> bool:
         return False
 
     normalized = name.lower()
-    if normalized in _existing_name_keys(data):
+    if normalized in _existing_normalized_names():
         st.error("Já existe paciente com esse nome.")
         return False
 
@@ -107,7 +61,7 @@ def _handle_submit(data: dict[str, pd.DataFrame]) -> bool:
     if age_value is not None and age_value <= 0:
         age_value = None
 
-    patient_id = _next_patient_id(data)
+    patient_id = next_id("patients")
     new_row: dict[str, Any] = {
         "patient_id": patient_id,
         "name": name,
@@ -117,7 +71,16 @@ def _handle_submit(data: dict[str, pd.DataFrame]) -> bool:
         "age": age_value,
         "created_at": pd.Timestamp.today().normalize(),
     }
-    st.session_state[_EXTRA_KEY].append(new_row)
+    append_row("patients", new_row)
+    # Drop the cached ``get_data`` so the next render re-reads the CSV
+    # and the new patient is visible in the table immediately. Pages
+    # that care about the freshness (e.g. ``pacientes``) check the
+    # ``_data_dirty`` flag below and re-read on the same render — no
+    # ``st.rerun()`` needed (which would interact poorly with the
+    # form's ``clear_on_submit=True``).
+    st.cache_data.clear()
+    st.session_state["_data_dirty"] = True
+
     st.session_state[_OPEN_KEY] = False
     st.session_state["patients_page"] = 1
     st.success(f"Paciente '{name}' cadastrado.")
@@ -139,8 +102,7 @@ def render_add_patient_toggle() -> None:
     form is already open this function renders nothing — the open state
     owns its own row via ``render_add_patient_form``.
     """
-    _ensure_state()
-    if st.session_state[_OPEN_KEY]:
+    if st.session_state.get(_OPEN_KEY):
         return
     st.button(
         "+ Adicionar paciente",
@@ -150,15 +112,14 @@ def render_add_patient_toggle() -> None:
     )
 
 
-def render_add_patient_form(data: dict[str, pd.DataFrame] | None = None) -> None:
+def render_add_patient_form(data: dict | None = None) -> None:
     """Render the add-patient form full-width below the toggle row.
 
-    No-op when the form is closed. Caller is expected to gate on
-    ``st.session_state["add_patient_open"]`` or simply call this and let
-    the helper self-gate.
+    No-op when the form is closed. ``data`` is accepted for backward
+    compatibility with the previous merge-based contract but is no longer
+    needed — the submit handler reads ``patients.csv`` directly.
     """
-    _ensure_state()
-    if not st.session_state[_OPEN_KEY]:
+    if not st.session_state.get(_OPEN_KEY):
         return
 
     with st.container(border=True):
@@ -209,7 +170,7 @@ def render_add_patient_form(data: dict[str, pd.DataFrame] | None = None) -> None
                     "Cancelar", use_container_width=True
                 )
             if submitted:
-                _handle_submit(data)
+                _handle_submit()
             elif cancelled:
                 _close_form()
                 st.rerun()
