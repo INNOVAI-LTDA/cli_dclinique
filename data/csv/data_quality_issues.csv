@@ -1,0 +1,5 @@
+issue_id,source,severity,issue_type,description,patient_id,field_name
+dq_001,Dados manuais,Alta,Campo ausente,Paciente sem peso atualizado.,pat_008,weight_entries.weight
+dq_002,PDFs de plano,Média,Revisão manual,Medicamento manipulado pendente de validação.,pat_003,treatment_plan_items.needs_manual_review
+dq_003,Relatório de frequência,Média,Execução zerada,Procedimento ainda não iniciado.,pat_002,execution_summary.sessions_completed
+dq_004,Fonte real,Baixa,Integração pendente,Arquivos reais ainda não integrados.,,source_files

@@ -13,10 +13,8 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.components.add_patient import merge_extra_patients
 from src.components.empty_states import render_empty
 from src.components.ficha import (
-    merge_extra_fichas,
     patient_has_ficha,
     render_cadastro_ficha_form,
 )
@@ -55,8 +53,14 @@ def _render_back_link() -> None:
 def render(data) -> None:
     st.markdown(_page_css(), unsafe_allow_html=True)
 
-    data = merge_extra_patients(data)
-    data = merge_extra_fichas(data)
+    # The cadastro form's submit handler clears the cached ``get_data``
+    # and sets ``_data_dirty``. If this render is the one that just
+    # received the submit (e.g. the user clicked "Cadastrar" and we
+    # haven't navigated away yet), re-read the CSVs so the page sees
+    # the freshly-created ficha without an extra rerun.
+    if st.session_state.pop("_data_dirty", False):
+        from src.data_layer import load_all
+        data = load_all()
 
     patient_id = st.session_state.get("selected_patient_id")
     if not patient_id:

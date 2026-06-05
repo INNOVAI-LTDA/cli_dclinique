@@ -1,0 +1,17 @@
+appointment_id,appointment_code,patient_id,budget_codes,appointment_start,appointment_end,appointment_raw,professional,scheduled_by,status
+appt_001_1,AG0011,pat_001,orc_001,2026-05-30 08:00:00,2026-05-30 09:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Atendido
+appt_001_2,AG0012,pat_001,orc_001,2026-06-09 09:00:00,2026-06-09 10:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Atendido
+appt_002_1,AG0021,pat_002,orc_002,2026-05-31 08:00:00,2026-05-31 09:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Agendado
+appt_002_2,AG0022,pat_002,orc_002,2026-06-10 09:00:00,2026-06-10 10:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Agendado
+appt_003_1,AG0031,pat_003,orc_003,2026-06-01 08:00:00,2026-06-01 09:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Confirmado
+appt_003_2,AG0032,pat_003,orc_003,2026-06-11 09:00:00,2026-06-11 10:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Confirmado
+appt_004_1,AG0041,pat_004,orc_004,2026-06-02 08:00:00,2026-06-02 09:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Atrasado
+appt_004_2,AG0042,pat_004,orc_004,2026-06-12 09:00:00,2026-06-12 10:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Atrasado
+appt_005_1,AG0051,pat_005,orc_005,2026-06-03 08:00:00,2026-06-03 09:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Atendido
+appt_005_2,AG0052,pat_005,orc_005,2026-06-13 09:00:00,2026-06-13 10:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Atendido
+appt_006_1,AG0061,pat_006,orc_006,2026-06-04 08:00:00,2026-06-04 09:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Cancelado
+appt_006_2,AG0062,pat_006,orc_006,2026-06-14 09:00:00,2026-06-14 10:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Cancelado
+appt_007_1,AG0071,pat_007,orc_007,2026-06-05 08:00:00,2026-06-05 09:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Confirmado
+appt_007_2,AG0072,pat_007,orc_007,2026-06-15 09:00:00,2026-06-15 10:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Confirmado
+appt_008_1,AG0081,pat_008,orc_008,2026-06-06 08:00:00,2026-06-06 09:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Reagendado
+appt_008_2,AG0082,pat_008,orc_008,2026-06-16 09:00:00,2026-06-16 10:00:00,Sessão de acompanhamento,Equipe MAP,Recepção,Reagendado

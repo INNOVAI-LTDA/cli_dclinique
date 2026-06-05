@@ -9,11 +9,10 @@ import pandas as pd
 import streamlit as st
 
 from src.components.add_patient import (
-    merge_extra_patients,
     render_add_patient_form,
     render_add_patient_toggle,
 )
-from src.components.ficha import merge_extra_fichas, patient_has_ficha
+from src.components.ficha import patient_has_ficha
 from src.metrics import patient_summary
 
 
@@ -490,21 +489,18 @@ def render(data):
     st.markdown(_patients_css(), unsafe_allow_html=True)
     st.markdown('<h1 class="patients-page-title">Pacientes</h1>', unsafe_allow_html=True)
 
-    # Render the add-patient form BEFORE merging session state. The
-    # form's submit handler (`_handle_submit`) only runs while
-    # Streamlit is evaluating the form widget, so the new patient lands
-    # in ``st.session_state["extra_patients"]`` during this very render.
-    # If we merged first, the table below would still see the old data
-    # until the next rerun — which is why the user previously had to
-    # click Cancelar (which calls ``st.rerun()``) just to see the
-    # patient they had just registered.
+    # Render the add-patient form first: the form's submit handler
+    # (``_handle_submit``) runs while Streamlit is evaluating the form
+    # widget. A successful submit appends the new row to
+    # ``patients.csv``, clears the ``@st.cache_data`` for ``get_data``,
+    # and sets the ``_data_dirty`` flag in the same render. The block
+    # below re-reads the CSVs so the table below sees the freshly
+    # registered patient without an extra ``st.rerun()`` (which would
+    # interact poorly with the form's ``clear_on_submit=True``).
     _render_add_patient_row(data)
-
-    # Now merge session-added patients and fichas into the data so the
-    # summary, filters, and table below all observe the freshly
-    # registered patient in the same render.
-    data = merge_extra_patients(data)
-    data = merge_extra_fichas(data)
+    if st.session_state.pop("_data_dirty", False):
+        from src.data_layer import load_all
+        data = load_all()
 
     summary = _prepare_patient_rows(data)
     _render_filters(summary)

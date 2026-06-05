@@ -1,18 +1,14 @@
 """Patient-record (ficha) creation helpers and form.
 
-Session-state contract (mirrors ``src.components.add_patient``):
-  - ``extra_treatment_plans``  — list[dict] matching ``EXPECTED_SCHEMAS["treatment_plans"]``
-  - ``extra_treatment_plan_items`` — list[dict] matching ``EXPECTED_SCHEMAS["treatment_plan_items"]``
-  - ``extra_patient_goals``    — list[dict] matching ``EXPECTED_SCHEMAS["patient_goals"]``
-  - ``extra_weight_entries``   — list[dict] matching ``EXPECTED_SCHEMAS["weight_entries"]``
+The MAP shell's source of truth is the CSV layer at ``data/csv/`` (see
+:mod:`src.data_layer`). This module writes the new plan, items, goal,
+and (optional) weight row directly to the corresponding CSVs and then
+clears the Streamlit cache so the next render observes them.
 
 A "ficha" is the combination of a treatment plan, its items, and the
-patient's goal for that plan. ``merge_extra_fichas`` is the single read
-path that pages and metrics use to see those session-added rows.
-
-The four lists above are mirrored to ``data/extra_data.json`` (see
-``src/persistence.py``) so a cadastrada ficha survives a hard refresh,
-tab close/reopen, or Streamlit server restart.
+patient's goal for that plan. The cadastro form persists them in one
+submission and updates the patient's age on the existing ``patients``
+row.
 """
 from __future__ import annotations
 
@@ -22,13 +18,8 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from src.persistence import load_extras, reset_extras, save_key
-from src.schemas import EXPECTED_SCHEMAS
+from src.data_layer import append_row, load_table, next_id, update_row
 
-_EXTRA_PLANS_KEY = "extra_treatment_plans"
-_EXTRA_ITEMS_KEY = "extra_treatment_plan_items"
-_EXTRA_GOALS_KEY = "extra_patient_goals"
-_EXTRA_WEIGHT_KEY = "extra_weight_entries"
 _ITEMS_WIDGET_KEY = "cadastro_ficha_items"
 _FORM_KEY = "cadastro_ficha_form"
 
@@ -42,144 +33,17 @@ _STATUS_OPTIONS = [
 _FREQUENCY_OPTIONS = ["Semanal", "Quinzenal", "Diário", "Mensal"]
 
 
-def _ensure_state() -> None:
-    # `setdefault` would clobber lists loaded from disk, so check first and
-    # fall back to the on-disk payload when the session-state key is missing
-    # (i.e., right after a hard refresh).
-    extras = None
-    for key in (_EXTRA_PLANS_KEY, _EXTRA_ITEMS_KEY, _EXTRA_GOALS_KEY, _EXTRA_WEIGHT_KEY):
-        if key not in st.session_state:
-            if extras is None:
-                extras = load_extras()
-            st.session_state[key] = extras.get(key, [])
-    # NOTE: _ITEMS_WIDGET_KEY is intentionally NOT set via setdefault —
-    # Streamlit forbids writing to st.session_state for widget-bound keys
-    # like st.data_editor. The data_editor widget initialises the value
-    # on first render and the submit handler reads it from session state
-    # at submit time.
+def patient_has_ficha(patient_id: str, data: dict[str, pd.DataFrame] | None = None) -> bool:
+    """Return True if ``patient_id`` already has at least one treatment plan.
 
-
-def _persist_extra_fichas() -> None:
-    """Mirror the four ficha extras to the JSON file (read-modify-write)."""
-    for key in (_EXTRA_PLANS_KEY, _EXTRA_ITEMS_KEY, _EXTRA_GOALS_KEY, _EXTRA_WEIGHT_KEY):
-        save_key(key, st.session_state[key])
-
-
-def _next_indexed_id(used: set[str], prefix: str, width: int = 3) -> str:
-    counter = 1
-    while True:
-        candidate = f"{prefix}_{counter:0{width}d}"
-        if candidate not in used:
-            return candidate
-        counter += 1
-
-
-def _next_plan_id(data: dict[str, pd.DataFrame]) -> str:
-    used: set[str] = set()
-    plans = data.get("treatment_plans")
-    if plans is not None and not plans.empty and "plan_id" in plans.columns:
-        used.update(plans["plan_id"].dropna().astype(str).tolist())
-    used.update(str(p.get("plan_id")) for p in st.session_state.get(_EXTRA_PLANS_KEY, []))
-    return _next_indexed_id(used, "plan_new")
-
-
-def _next_goal_id(data: dict[str, pd.DataFrame]) -> str:
-    used: set[str] = set()
-    goals = data.get("patient_goals")
-    if goals is not None and not goals.empty and "goal_id" in goals.columns:
-        used.update(goals["goal_id"].dropna().astype(str).tolist())
-    used.update(str(g.get("goal_id")) for g in st.session_state.get(_EXTRA_GOALS_KEY, []))
-    return _next_indexed_id(used, "goal_new")
-
-
-def _next_item_id(data: dict[str, pd.DataFrame]) -> str:
-    used: set[str] = set()
-    items = data.get("treatment_plan_items")
-    if items is not None and not items.empty and "plan_item_id" in items.columns:
-        used.update(items["plan_item_id"].dropna().astype(str).tolist())
-    used.update(str(i.get("plan_item_id")) for i in st.session_state.get(_EXTRA_ITEMS_KEY, []))
-    return _next_indexed_id(used, "item_new")
-
-
-def _next_weight_id(data: dict[str, pd.DataFrame]) -> str:
-    used: set[str] = set()
-    weights = data.get("weight_entries")
-    if weights is not None and not weights.empty and "weight_id" in weights.columns:
-        used.update(weights["weight_id"].dropna().astype(str).tolist())
-    used.update(str(w.get("weight_id")) for w in st.session_state.get(_EXTRA_WEIGHT_KEY, []))
-    return _next_indexed_id(used, "w_new")
-
-
-def merge_extra_fichas(data: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
-    """Append session-added fichas to the corresponding tables.
-
-    Returns the **same** dict instance when there are no extras, so
-    ``@st.cache_data`` consumers keep their cache.
+    Reads the treatment plans CSV directly (not the cached ``load_all``)
+    so the deep-link on the Pacientes page reflects the on-disk state
+    right after a hard refresh.
     """
-    _ensure_state()
-    plans = st.session_state[_EXTRA_PLANS_KEY]
-    items = st.session_state[_EXTRA_ITEMS_KEY]
-    goals = st.session_state[_EXTRA_GOALS_KEY]
-    weights = st.session_state[_EXTRA_WEIGHT_KEY]
-    if not plans and not items and not goals and not weights:
-        return data
-    if data is None:
-        return data
-
-    new_data = dict(data)
-
-    if plans and "treatment_plans" in new_data:
-        plans_df = pd.DataFrame(plans, columns=EXPECTED_SCHEMAS["treatment_plans"])
-        for col in ("issue_date", "start_date", "end_date"):
-            plans_df[col] = pd.to_datetime(plans_df[col], errors="coerce")
-        plans_df["is_renewal"] = plans_df["is_renewal"].astype(bool)
-        new_data["treatment_plans"] = pd.concat(
-            [new_data["treatment_plans"], plans_df], ignore_index=True
-        )
-
-    if items and "treatment_plan_items" in new_data:
-        items_df = pd.DataFrame(items, columns=EXPECTED_SCHEMAS["treatment_plan_items"])
-        items_df["needs_manual_review"] = items_df["needs_manual_review"].astype(bool)
-        new_data["treatment_plan_items"] = pd.concat(
-            [new_data["treatment_plan_items"], items_df], ignore_index=True
-        )
-
-    if goals and "patient_goals" in new_data:
-        goals_df = pd.DataFrame(goals, columns=EXPECTED_SCHEMAS["patient_goals"])
-        for col in ("initial_weight", "target_weight"):
-            goals_df[col] = pd.to_numeric(goals_df[col], errors="coerce")
-        if "target_date" in goals_df.columns:
-            goals_df["target_date"] = pd.to_datetime(goals_df["target_date"], errors="coerce")
-        new_data["patient_goals"] = pd.concat(
-            [new_data["patient_goals"], goals_df], ignore_index=True
-        )
-
-    if weights and "weight_entries" in new_data:
-        weights_df = pd.DataFrame(weights, columns=EXPECTED_SCHEMAS["weight_entries"])
-        weights_df["measurement_date"] = pd.to_datetime(weights_df["measurement_date"], errors="coerce")
-        weights_df["weight"] = pd.to_numeric(weights_df["weight"], errors="coerce")
-        new_data["weight_entries"] = pd.concat(
-            [new_data["weight_entries"], weights_df], ignore_index=True
-        )
-
-    return new_data
-
-
-def reset_extra_fichas() -> None:
-    """Clear session-added fichas. Useful for tests / debug only."""
-    st.session_state[_EXTRA_PLANS_KEY] = []
-    st.session_state[_EXTRA_ITEMS_KEY] = []
-    st.session_state[_EXTRA_GOALS_KEY] = []
-    st.session_state[_EXTRA_WEIGHT_KEY] = []
-    reset_extras()
-
-
-def patient_has_ficha(patient_id: str, data: dict[str, pd.DataFrame]) -> bool:
-    """Return True if ``patient_id`` already has at least one treatment plan."""
-    plans = data.get("treatment_plans") if data else None
-    if plans is None or plans.empty or "patient_id" not in plans.columns:
+    df = load_table("treatment_plans")
+    if df.empty or "patient_id" not in df.columns:
         return False
-    return bool((plans["patient_id"].astype(str) == str(patient_id)).any())
+    return bool((df["patient_id"].astype(str) == str(patient_id)).any())
 
 
 def _default_items_df() -> pd.DataFrame:
@@ -207,9 +71,8 @@ def _coerce_date(value: Any) -> pd.Timestamp:
     return pd.to_datetime(value, errors="coerce")
 
 
-def _handle_submit(patient_id: str, data: dict[str, pd.DataFrame]) -> None:
+def _handle_submit(patient_id: str) -> None:
     """Build and persist the ficha rows, then navigate to the Ficha page."""
-    _ensure_state()
     today = pd.Timestamp.today().normalize()
 
     try:
@@ -239,8 +102,8 @@ def _handle_submit(patient_id: str, data: dict[str, pd.DataFrame]) -> None:
     notes = str(st.session_state.get("cadastro_ficha_resumo", "") or "").strip()
     goal_type = objetivo if objetivo else "Emagrecimento"
 
-    plan_id = _next_plan_id(data)
-    goal_id = _next_goal_id(data)
+    plan_id = next_id("treatment_plans")
+    goal_id = next_id("patient_goals")
 
     plan_row: dict[str, Any] = {
         "plan_id": plan_id,
@@ -254,7 +117,7 @@ def _handle_submit(patient_id: str, data: dict[str, pd.DataFrame]) -> None:
         "is_renewal": is_renewal,
         "notes": notes,
     }
-    st.session_state[_EXTRA_PLANS_KEY].append(plan_row)
+    append_row("treatment_plans", plan_row)
 
     goal_row: dict[str, Any] = {
         "goal_id": goal_id,
@@ -266,7 +129,7 @@ def _handle_submit(patient_id: str, data: dict[str, pd.DataFrame]) -> None:
         "target_date": data_fim if pd.notna(data_fim) else today + timedelta(days=60),
         "goal_notes": notes,
     }
-    st.session_state[_EXTRA_GOALS_KEY].append(goal_row)
+    append_row("patient_goals", goal_row)
 
     items_df = st.session_state.get(_ITEMS_WIDGET_KEY)
     if items_df is None or (hasattr(items_df, "empty") and items_df.empty):
@@ -286,8 +149,9 @@ def _handle_submit(patient_id: str, data: dict[str, pd.DataFrame]) -> None:
         except (TypeError, ValueError):
             sessions_expected = 0
         frequency_type = str(record.get("frequencia", "Semanal") or "Semanal")
-        item_id = _next_item_id(data)
-        st.session_state[_EXTRA_ITEMS_KEY].append(
+        item_id = next_id("treatment_plan_items")
+        append_row(
+            "treatment_plan_items",
             {
                 "plan_item_id": item_id,
                 "plan_id": plan_id,
@@ -300,12 +164,13 @@ def _handle_submit(patient_id: str, data: dict[str, pd.DataFrame]) -> None:
                 "frequency_type": frequency_type,
                 "source": "Dados manuais",
                 "needs_manual_review": False,
-            }
+            },
         )
 
     if peso_atual > 0:
-        weight_id = _next_weight_id(data)
-        st.session_state[_EXTRA_WEIGHT_KEY].append(
+        weight_id = next_id("weight_entries")
+        append_row(
+            "weight_entries",
             {
                 "weight_id": weight_id,
                 "patient_id": patient_id,
@@ -314,24 +179,23 @@ def _handle_submit(patient_id: str, data: dict[str, pd.DataFrame]) -> None:
                 "weight": peso_atual,
                 "source": "Dados manuais",
                 "notes": "Peso atual no cadastro da ficha.",
-            }
+            },
         )
 
-    # Mirror the four ficha extras to disk so the cadastrada ficha survives
-    # a hard refresh, tab close, or server restart.
-    _persist_extra_fichas()
+    # Persist the age entered on the form to the patient's row. The
+    # patient is always present (the cadastro page resolves a
+    # ``selected_patient_id`` from the Pacientes deep-link), so this is
+    # never a no-op — unlike the previous session-state flow.
+    update_row("patients", "patient_id", patient_id, {"age": age if age > 0 else None})
 
-    # Update the session-added patient record's age (no-op for fixture rows).
-    # The patient record lives in add_patient's `extra_patients`; persist it
-    # too via the generic save_key helper.
-    patient_updated = False
-    for extra in st.session_state.get("extra_patients", []):
-        if str(extra.get("patient_id", "")) == str(patient_id):
-            extra["age"] = age
-            patient_updated = True
-            break
-    if patient_updated and "extra_patients" in st.session_state:
-        save_key("extra_patients", st.session_state["extra_patients"])
+    # Drop the cached ``get_data`` so the next render re-reads the CSVs
+    # and the new ficha is visible immediately. Pages that care about
+    # freshness (e.g. ``pacientes``, ``ficha_paciente``) check the
+    # ``_data_dirty`` flag below and re-read on the same render — no
+    # ``st.rerun()`` needed (which would interact poorly with the
+    # form's ``clear_on_submit=True``).
+    st.cache_data.clear()
+    st.session_state["_data_dirty"] = True
 
     st.session_state["selected_patient_id"] = patient_id
     st.session_state["page"] = "Ficha do Paciente"
@@ -403,15 +267,15 @@ def _ficha_css() -> str:
     """
 
 
-def render_cadastro_ficha_form(data: dict[str, pd.DataFrame], patient: dict) -> None:
+def render_cadastro_ficha_form(data: dict | None, patient: dict) -> None:
     """Render the ficha registration form for ``patient``.
 
-    ``data`` must already include the patient (use ``merge_extra_patients``
-    before calling). On submit the function writes the new plan/items/goal
-    into session state and switches the active page to the Ficha do
+    ``data`` is accepted for backward compatibility with the previous
+    merge-based contract; this form reads the CSVs directly via the data
+    layer. On submit the function writes the new plan/items/goal to the
+    corresponding CSVs and switches the active page to the Ficha do
     Paciente.
     """
-    _ensure_state()
     st.markdown(_ficha_css(), unsafe_allow_html=True)
 
     patient_id = str(patient.get("patient_id", ""))
@@ -569,7 +433,7 @@ def render_cadastro_ficha_form(data: dict[str, pd.DataFrame], patient: dict) -> 
         st.markdown("</div>", unsafe_allow_html=True)
 
         if submitted:
-            _handle_submit(patient_id, data)
+            _handle_submit(patient_id)
         elif cancelled:
             st.session_state["page"] = "Pacientes"
             st.session_state["cadastro_ficha_cancelled"] = True
