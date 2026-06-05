@@ -490,18 +490,24 @@ def render(data):
     st.markdown(_patients_css(), unsafe_allow_html=True)
     st.markdown('<h1 class="patients-page-title">Pacientes</h1>', unsafe_allow_html=True)
 
-    # Merge session-added patients (registered via the add-patient widget)
-    # before any cached metric runs — `merge_extra_patients` returns the
-    # same dict instance when there are no extras, keeping the
-    # `@st.cache_data` consumers warm. `merge_extra_fichas` is then
-    # applied for the same reason so the table's per-row link target
-    # sees freshly-cadastradas fichas when computing `patient_has_ficha`.
+    # Render the add-patient form BEFORE merging session state. The
+    # form's submit handler (`_handle_submit`) only runs while
+    # Streamlit is evaluating the form widget, so the new patient lands
+    # in ``st.session_state["extra_patients"]`` during this very render.
+    # If we merged first, the table below would still see the old data
+    # until the next rerun — which is why the user previously had to
+    # click Cancelar (which calls ``st.rerun()``) just to see the
+    # patient they had just registered.
+    _render_add_patient_row(data)
+
+    # Now merge session-added patients and fichas into the data so the
+    # summary, filters, and table below all observe the freshly
+    # registered patient in the same render.
     data = merge_extra_patients(data)
     data = merge_extra_fichas(data)
 
     summary = _prepare_patient_rows(data)
     _render_filters(summary)
-    _render_add_patient_row(data)
     filtered = _apply_filters(summary)
 
     start, end = _pagination_bounds(len(filtered))
