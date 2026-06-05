@@ -91,6 +91,31 @@ def _isolate_streamlit_cache():
         pass
 
 
+@pytest.fixture(autouse=True)
+def _isolate_persistence_file(tmp_path, monkeypatch):
+    """Redirect ``src.persistence._get_extras_file`` to a per-test tmp file.
+
+    Ensures:
+    1. Tests never read or write the real ``data/extra_data.json`` of the
+       developer's local checkout.
+    2. Data left over by one test does not leak into the next.
+
+    The fixture resolves the file path lazily (each call inside the
+    component under test goes through ``_get_extras_file``), so monkey-
+    patching that function is enough — no need to chase every constant.
+    """
+    import src.persistence as persistence
+
+    test_file = tmp_path / "extra_data.json"
+    # Make sure no stale file from a prior run is read.
+    if test_file.exists():
+        test_file.unlink()
+    monkeypatch.setattr(persistence, "_get_extras_file", lambda: test_file)
+    yield
+    if test_file.exists():
+        test_file.unlink()
+
+
 def patient_rows_with_extras(base: dict[str, pd.DataFrame], extras: list[dict]) -> pd.DataFrame:
     """Helper: build a patients DataFrame that includes the given extras
     (matches what ``merge_extra_patients`` returns)."""

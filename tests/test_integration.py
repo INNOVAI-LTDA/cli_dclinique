@@ -344,3 +344,159 @@ def test_cancelar_does_not_lose_already_registered_patients():
         for e in at.session_state["extra_patients"]
     )
     assert "Antes do Cancelar" in _patient_link_markup(at)
+
+
+# ---------------------------------------------------------------------------
+# 7. Disk persistence (data/extra_data.json).
+#
+# These tests cover the layer added in this branch so that registered
+# patients and cadastradas fichas survive:
+#   * a Streamlit session being torn down (e.g. tab close / server restart);
+#   * a hard refresh in the browser.
+#
+# The conftest fixture ``_isolate_persistence_file`` redirects the file
+# path to a per-test tmp location, so we can inspect the on-disk payload
+# without polluting the developer's local checkout.
+# ---------------------------------------------------------------------------
+
+
+def _extras_file_path() -> str:
+    """Helper: read the current (monkeypatched) extras file path."""
+    from src.persistence import _get_extras_file
+
+    return str(_get_extras_file())
+
+
+def test_patient_registration_writes_to_disk():
+    """Submitting the add-patient form must persist the new patient to
+    ``data/extra_data.json`` (via ``src.persistence``) so it can be
+    reloaded on a future session."""
+    at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Persistido em Disco", age=27)
+
+    # The on-disk file must contain exactly this one extra patient.
+    from src.persistence import load_extras
+
+    extras = load_extras()
+    assert "extra_patients" in extras
+    assert len(extras["extra_patients"]) == 1
+    row = extras["extra_patients"][0]
+    assert row["patient_id"] == pid
+    assert row["name"] == "Persistido em Disco"
+
+    # The other keys must exist as empty lists (normalised payload).
+    for key in (
+        "extra_treatment_plans",
+        "extra_treatment_plan_items",
+        "extra_patient_goals",
+        "extra_weight_entries",
+    ):
+        assert extras[key] == []
+
+
+def test_registered_patient_persists_across_simulated_hard_refresh():
+    """After a hard refresh, ``st.session_state`` is wiped but the on-disk
+    file remains. The next render must reload the patient from disk so
+    it keeps appearing in the Pacientes table."""
+    at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Sobrevive ao Refresh", age=41)
+    assert pid in [p["patient_id"] for p in at.session_state["extra_patients"]]
+
+    # --- Simulate a hard refresh: wipe session state, keep the file. ---
+    # (In a real browser the WebSocket reconnects and a new session starts;
+    # AppTest's session_state survives `at.run()` calls, so we explicitly
+    # clear the keys that the persistence layer is responsible for.)
+    for key in (
+        "extra_patients",
+        "extra_treatment_plans",
+        "extra_treatment_plan_items",
+        "extra_patient_goals",
+        "extra_weight_entries",
+    ):
+        if key in at.session_state:
+            del at.session_state[key]
+    at.run()
+
+    # After the simulated reload, the patient must be back in the table.
+    markup = _patient_link_markup(at)
+    assert "Sobrevive ao Refresh" in markup, (
+        "Hard refresh lost the patient. Either `_ensure_state` did not "
+        "reload from disk, or `merge_extra_patients` ignored the reloaded "
+        "list. The on-disk file should be the source of truth on a fresh "
+        "session."
+    )
+    assert f"patient_id={pid}" in markup
+
+
+def test_cadastrada_ficha_persists_across_simulated_hard_refresh():
+    """Same property, but for a ficha cadastrada via the Cadastro de
+    Ficha form. Plan/goal/items/weight rows must all be reloaded from
+    disk after a simulated refresh."""
+    at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Ficha Persistente", age=33)
+
+    # Cadastrar a ficha.
+    at.query_params["nav"] = "Cadastro de Ficha do Paciente"
+    at.query_params["patient_id"] = pid
+    at.run()
+    at.session_state["cadastro_ficha_objetivo"] = "Emagrecimento"
+    at.session_state["cadastro_ficha_peso_inicial"] = 80.0
+    at.session_state["cadastro_ficha_peso_atual"] = 79.0
+    at.session_state["cadastro_ficha_peso_meta"] = 70.0
+    at.session_state["cadastro_ficha_status"] = "Ativo"
+    at.session_state["cadastro_ficha_resumo"] = "Plano de teste"
+    at.session_state["cadastro_ficha_inicio"] = pd.Timestamp.today().normalize().date()
+    at.session_state["cadastro_ficha_fim"] = (
+        pd.Timestamp.today().normalize() + pd.Timedelta(days=60)
+    ).date()
+    at.run()
+    submit = [b for b in at.button if b.label == "Cadastrar ficha"][0]
+    submit.click()
+    at.run()
+
+    # The submit must have written at least one plan, one goal, and one
+    # weight entry to disk.
+    from src.persistence import load_extras
+
+    extras = load_extras()
+    assert len(extras["extra_treatment_plans"]) == 1
+    assert len(extras["extra_patient_goals"]) == 1
+    assert len(extras["extra_weight_entries"]) == 1
+    assert extras["extra_treatment_plans"][0]["patient_id"] == pid
+
+    # --- Simulate a hard refresh. ---
+    for key in (
+        "extra_patients",
+        "extra_treatment_plans",
+        "extra_treatment_plan_items",
+        "extra_patient_goals",
+        "extra_weight_entries",
+    ):
+        if key in at.session_state:
+            del at.session_state[key]
+    at.query_params["nav"] = "Ficha do Paciente"
+    at.query_params["patient_id"] = pid
+    at.run()
+
+    # The Ficha do Paciente page must find the patient and the plan.
+    assert at.session_state["page"] == "Ficha do Paciente"
+    assert at.session_state["selected_patient_id"] == pid
+    rendered = "".join(str(m.value) for m in at.markdown)
+    assert "Ficha Persistente" in rendered
+    assert "Plano de teste" in rendered  # resumo from the form
+
+    # patient_summary rebuilds from the merged data; the persisted plan
+    # must be visible there. Build the merged data dict inline because
+    # AppTest's session_state is a SafeSessionState (unhashable for
+    # @st.cache_data).
+    from src.mock_data import load_mock_data
+    from src.components.add_patient import merge_extra_patients
+    from src.components.ficha import merge_extra_fichas
+    from src.metrics import patient_summary
+
+    base = load_mock_data()
+    merged = merge_extra_fichas(merge_extra_patients(base))
+    s2 = patient_summary(merged)
+    row = s2.loc[s2["patient_id"] == pid]
+    assert not row.empty
+    assert row.iloc[0]["status"] == "Ativo"

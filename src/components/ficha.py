@@ -9,6 +9,10 @@ Session-state contract (mirrors ``src.components.add_patient``):
 A "ficha" is the combination of a treatment plan, its items, and the
 patient's goal for that plan. ``merge_extra_fichas`` is the single read
 path that pages and metrics use to see those session-added rows.
+
+The four lists above are mirrored to ``data/extra_data.json`` (see
+``src/persistence.py``) so a cadastrada ficha survives a hard refresh,
+tab close/reopen, or Streamlit server restart.
 """
 from __future__ import annotations
 
@@ -18,6 +22,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from src.persistence import load_extras, reset_extras, save_key
 from src.schemas import EXPECTED_SCHEMAS
 
 _EXTRA_PLANS_KEY = "extra_treatment_plans"
@@ -38,15 +43,26 @@ _FREQUENCY_OPTIONS = ["Semanal", "Quinzenal", "Diário", "Mensal"]
 
 
 def _ensure_state() -> None:
-    st.session_state.setdefault(_EXTRA_PLANS_KEY, [])
-    st.session_state.setdefault(_EXTRA_ITEMS_KEY, [])
-    st.session_state.setdefault(_EXTRA_GOALS_KEY, [])
-    st.session_state.setdefault(_EXTRA_WEIGHT_KEY, [])
+    # `setdefault` would clobber lists loaded from disk, so check first and
+    # fall back to the on-disk payload when the session-state key is missing
+    # (i.e., right after a hard refresh).
+    extras = None
+    for key in (_EXTRA_PLANS_KEY, _EXTRA_ITEMS_KEY, _EXTRA_GOALS_KEY, _EXTRA_WEIGHT_KEY):
+        if key not in st.session_state:
+            if extras is None:
+                extras = load_extras()
+            st.session_state[key] = extras.get(key, [])
     # NOTE: _ITEMS_WIDGET_KEY is intentionally NOT set via setdefault —
     # Streamlit forbids writing to st.session_state for widget-bound keys
     # like st.data_editor. The data_editor widget initialises the value
     # on first render and the submit handler reads it from session state
     # at submit time.
+
+
+def _persist_extra_fichas() -> None:
+    """Mirror the four ficha extras to the JSON file (read-modify-write)."""
+    for key in (_EXTRA_PLANS_KEY, _EXTRA_ITEMS_KEY, _EXTRA_GOALS_KEY, _EXTRA_WEIGHT_KEY):
+        save_key(key, st.session_state[key])
 
 
 def _next_indexed_id(used: set[str], prefix: str, width: int = 3) -> str:
@@ -155,6 +171,7 @@ def reset_extra_fichas() -> None:
     st.session_state[_EXTRA_ITEMS_KEY] = []
     st.session_state[_EXTRA_GOALS_KEY] = []
     st.session_state[_EXTRA_WEIGHT_KEY] = []
+    reset_extras()
 
 
 def patient_has_ficha(patient_id: str, data: dict[str, pd.DataFrame]) -> bool:
@@ -300,11 +317,21 @@ def _handle_submit(patient_id: str, data: dict[str, pd.DataFrame]) -> None:
             }
         )
 
+    # Mirror the four ficha extras to disk so the cadastrada ficha survives
+    # a hard refresh, tab close, or server restart.
+    _persist_extra_fichas()
+
     # Update the session-added patient record's age (no-op for fixture rows).
+    # The patient record lives in add_patient's `extra_patients`; persist it
+    # too via the generic save_key helper.
+    patient_updated = False
     for extra in st.session_state.get("extra_patients", []):
         if str(extra.get("patient_id", "")) == str(patient_id):
             extra["age"] = age
+            patient_updated = True
             break
+    if patient_updated and "extra_patients" in st.session_state:
+        save_key("extra_patients", st.session_state["extra_patients"])
 
     st.session_state["selected_patient_id"] = patient_id
     st.session_state["page"] = "Ficha do Paciente"

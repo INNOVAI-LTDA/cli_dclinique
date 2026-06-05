@@ -1,10 +1,16 @@
 """Add-patient widget: toggle button, form, and session-state merge helper.
 
-The MAP shell keeps all data in memory; new patients live in
+The MAP shell keeps fictional data locally; new patients live in
 ``st.session_state["extra_patients"]`` (a list of dicts that matches the
-``EXPECTED_SCHEMAS["patients"]`` contract — see ``src/schemas.py``) for the
-lifetime of the session. ``merge_extra_patients`` is the single read path used
-by the pages that need to see those rows.
+``EXPECTED_SCHEMAS["patients"]`` contract — see ``src/schemas.py``) and are
+mirrored to ``data/extra_data.json`` (see ``src/persistence.py``) so they
+survive hard refreshes, tab close/reopen, and Streamlit server restarts.
+
+``merge_extra_patients`` is the single read path used by the pages that need
+to see those rows. Within a single Streamlit session, it reads from
+``st.session_state`` (warm path). When the session state key is missing —
+which happens after a full page reload — ``_ensure_state`` reloads the list
+from the on-disk file.
 """
 from __future__ import annotations
 
@@ -13,6 +19,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from src.persistence import load_extras, reset_extras, save_key
 from src.schemas import EXPECTED_SCHEMAS
 
 _EXTRA_KEY = "extra_patients"
@@ -25,8 +32,15 @@ _AGE_KEY = "add_patient_age"
 
 
 def _ensure_state() -> None:
-    st.session_state.setdefault(_EXTRA_KEY, [])
+    # `setdefault` would clobber a list loaded from disk, so check first.
+    if _EXTRA_KEY not in st.session_state:
+        st.session_state[_EXTRA_KEY] = load_extras().get(_EXTRA_KEY, [])
     st.session_state.setdefault(_OPEN_KEY, False)
+
+
+def _persist_extra_patients() -> None:
+    """Mirror the current ``st.session_state[_EXTRA_KEY]`` to the JSON file."""
+    save_key(_EXTRA_KEY, st.session_state[_EXTRA_KEY])
 
 
 def _existing_name_keys(data: dict[str, pd.DataFrame] | None) -> set[str]:
@@ -83,6 +97,7 @@ def reset_extra_patients() -> None:
     """Clear all session-added patients. Useful for tests / debug only."""
     st.session_state[_EXTRA_KEY] = []
     st.session_state[_OPEN_KEY] = False
+    reset_extras()
 
 
 def _handle_submit(data: dict[str, pd.DataFrame]) -> bool:
@@ -118,6 +133,7 @@ def _handle_submit(data: dict[str, pd.DataFrame]) -> bool:
         "created_at": pd.Timestamp.today().normalize(),
     }
     st.session_state[_EXTRA_KEY].append(new_row)
+    _persist_extra_patients()
     st.session_state[_OPEN_KEY] = False
     st.session_state["patients_page"] = 1
     st.success(f"Paciente '{name}' cadastrado.")

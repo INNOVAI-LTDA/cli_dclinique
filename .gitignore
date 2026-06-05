@@ -2,3 +2,7 @@
 __pycache__/
 *.pyc
 *.pyo
+
+# Session-added extras persisted by src/persistence.py
+data/extra_data.json
+data/.extra_data_*.json.tmp
