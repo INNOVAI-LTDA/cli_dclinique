@@ -13,6 +13,7 @@ from src.components.add_patient import (
     render_add_patient_form,
     render_add_patient_toggle,
 )
+from src.components.ficha import merge_extra_fichas, patient_has_ficha
 from src.metrics import patient_summary
 
 
@@ -379,7 +380,7 @@ def _render_add_patient_row(data: dict[str, pd.DataFrame]) -> None:
         render_add_patient_form(data)
 
 
-def _render_table(df: pd.DataFrame) -> None:
+def _render_table(df: pd.DataFrame, data: dict[str, pd.DataFrame]) -> None:
     if df.empty:
         st.markdown(
             '<div class="patients-table-shell"><div class="patients-empty">Nenhum paciente encontrado com os filtros atuais.</div></div>',
@@ -413,10 +414,19 @@ def _render_table(df: pd.DataFrame) -> None:
 
         safe_name = html.escape(name) if name else "-"
         safe_pid = quote(patient_id, safe="")
+        # The deep-link target depends on whether the patient already has
+        # a ficha: existing patients go to the Ficha do Paciente view,
+        # newly added (no-plan) patients go to the Cadastro de Ficha.
+        target_page = (
+            "Cadastro de Ficha do Paciente"
+            if not patient_has_ficha(patient_id, data)
+            else "Ficha do Paciente"
+        )
+        safe_nav = quote(target_page, safe="")
         parts.append(
             '<div class="patients-row">'
             f'<div class="c-name"><a class="patients-name-link" '
-            f'href="?nav=Ficha%20do%20Paciente&patient_id={safe_pid}" '
+            f'href="?nav={safe_nav}&patient_id={safe_pid}" '
             f'target="_self" rel="noopener">{safe_name}</a></div>'
             f'<div class="c-cell"><span class="patients-badge {_status_class(status)}">{html.escape(status)}</span></div>'
             f'<div class="c-cell">{_format_date(row.get("start_date"))}</div>'
@@ -483,8 +493,11 @@ def render(data):
     # Merge session-added patients (registered via the add-patient widget)
     # before any cached metric runs — `merge_extra_patients` returns the
     # same dict instance when there are no extras, keeping the
-    # `@st.cache_data` consumers warm.
+    # `@st.cache_data` consumers warm. `merge_extra_fichas` is then
+    # applied for the same reason so the table's per-row link target
+    # sees freshly-cadastradas fichas when computing `patient_has_ficha`.
     data = merge_extra_patients(data)
+    data = merge_extra_fichas(data)
 
     summary = _prepare_patient_rows(data)
     _render_filters(summary)
@@ -492,5 +505,5 @@ def render(data):
     filtered = _apply_filters(summary)
 
     start, end = _pagination_bounds(len(filtered))
-    _render_table(filtered.iloc[start:end])
+    _render_table(filtered.iloc[start:end], data)
     _render_pagination(len(filtered))

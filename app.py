@@ -17,6 +17,7 @@ _PAGE_MODULES: dict[str, str] = {
     "Mapa de Decisão": "src.pages.mapa_decisao",
     "Pacientes": "src.pages.pacientes",
     "Ficha do Paciente": "src.pages.ficha_paciente",
+    "Cadastro de Ficha do Paciente": "src.pages.cadastro_ficha_paciente",
     "Alertas": "src.pages.alertas",
     "Atualização de Dados": "src.pages.atualizacao_dados",
     "Qualidade dos Dados": "src.pages.qualidade_dados",

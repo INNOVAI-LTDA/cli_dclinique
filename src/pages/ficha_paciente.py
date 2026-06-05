@@ -9,6 +9,7 @@ import streamlit as st
 from src.charts.weight_chart import patient_weight_chart
 from src.components.add_patient import merge_extra_patients
 from src.components.empty_states import render_empty
+from src.components.ficha import merge_extra_fichas
 from src.components.patient_header import render_patient_header
 from src.metrics import patient_summary
 from src.navigation import go_to
@@ -309,8 +310,11 @@ def render(data) -> None:
     st.markdown(_page_css(), unsafe_allow_html=True)
 
     # Merge session-added patients (registered via the add-patient widget)
-    # so that clicking a freshly-added patient's name does not 404.
+    # so that clicking a freshly-added patient's name does not 404, and
+    # session-added fichas so that a ficha just cadastrada for that
+    # patient shows up immediately on the detail page.
     data = merge_extra_patients(data)
+    data = merge_extra_fichas(data)
 
     summary = patient_summary(data)
     if summary.empty:
