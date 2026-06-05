@@ -9,7 +9,10 @@ SIDEBAR_PAGES = [
     "Qualidade dos Dados",
 ]
 
-INTERNAL_PAGES = ["Ficha do Paciente"]
+INTERNAL_PAGES = [
+    "Ficha do Paciente",
+    "Cadastro de Ficha do Paciente",
+]
 PAGES = SIDEBAR_PAGES + INTERNAL_PAGES
 DEFAULT_PAGE = SIDEBAR_PAGES[0]
 
