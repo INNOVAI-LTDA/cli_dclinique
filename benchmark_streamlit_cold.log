@@ -1,0 +1,9 @@
+2026-06-04 13:41:03.591 Uvicorn server started on 0.0.0.0:8765
+WARNING: Static file serving is enabled, but no static folder found at C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\benchmark-sla\static. To disable static file serving, set server.enableStaticServing to false.
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8765
+  Network URL: http://192.168.1.7:8765
+  External URL: http://170.238.198.172:8765
+

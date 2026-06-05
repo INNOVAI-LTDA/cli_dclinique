@@ -1,0 +1,502 @@
+"""End-to-end integration tests for the MAP shell.
+
+These tests drive the real ``app.py`` through ``streamlit.testing.v1.AppTest``
+and assert on the rendered markup, session state, and navigation flow.
+They cover the user-reported bug scenarios:
+
+* Patient not visible in the table right after the add-patient submit
+* "Cancelar" was the only way to see the freshly-added patient
+* Clicking the patient's link showed "Paciente não encontrado"
+* The patient disappeared when returning to the Pacientes page
+
+And the surrounding flow (link routing based on ``patient_has_ficha``,
+Cadastro → Ficha redirect, link target switches after a ficha is created).
+"""
+from __future__ import annotations
+
+import os
+
+import pandas as pd
+import pytest
+
+from streamlit.testing.v1 import AppTest
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _render_pacientes() -> AppTest:
+    at = AppTest.from_file(os.path.abspath("app.py"), default_timeout=30)
+    at.session_state["page"] = "Pacientes"
+    at.run()
+    return at
+
+
+def _patient_link_markup(at: AppTest) -> str:
+    return "".join(
+        str(m.value) for m in at.markdown if "patients-name-link" in str(m.value)
+    )
+
+
+def _open_add_form(at: AppTest) -> None:
+    """Reopen the add-patient form. The toggle button is only rendered
+    when the form is closed, but AppTest's ``at.button`` also contains
+    the form's submit/cancel buttons (which never go away), so we set the
+    flag directly — this is the same effect as clicking the toggle."""
+    at.session_state["add_patient_open"] = True
+    at.run()
+
+
+def _fill_add_form(at: AppTest, *, name: str, age: int, record: str = "", phone: str = "") -> None:
+    at.session_state["add_patient_name"] = name
+    at.session_state["add_patient_age"] = age
+    at.session_state["add_patient_record"] = record
+    at.session_state["add_patient_phone"] = phone
+    at.run()
+
+
+def _submit_add_form(at: AppTest) -> None:
+    submit = [b for b in at.button if b.label == "Cadastrar"]
+    assert submit, "Cadastrar button not found"
+    submit[0].click()
+    at.run()
+
+
+def _register_patient_via_form(at: AppTest, *, name: str, age: int) -> str:
+    """Open the add-patient form, fill it, submit, and return the new patient_id."""
+    _open_add_form(at)
+    _fill_add_form(at, name=name, age=age)
+    _submit_add_form(at)
+    extras = at.session_state["extra_patients"]
+    assert len(extras) == 1, f"Expected 1 extra patient, got {len(extras)}"
+    return extras[0]["patient_id"]
+
+
+# ---------------------------------------------------------------------------
+# 1. The reported bug: patient must appear in the table on the same
+#    render that the form was submitted (no manual Cancelar required).
+# ---------------------------------------------------------------------------
+
+
+def test_newly_registered_patient_appears_in_table_on_same_render():
+    at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Maria Bug Original", age=33)
+
+    # The very first rerun after submit must already show the patient.
+    markup = _patient_link_markup(at)
+    assert "Maria Bug Original" in markup, (
+        "Bug reproduced: freshly registered patient is not visible in the table "
+        "until a manual rerun is forced. The fix in pacientes.py reorders the "
+        "render so the form runs before the merge."
+    )
+    # Link target must point to Cadastro de Ficha do Paciente (no ficha yet).
+    assert f"patient_id={pid}" in markup
+    assert "Cadastro%20de%20Ficha%20do%20Paciente" in markup
+
+
+def test_cancelar_after_submit_does_not_lose_the_patient():
+    """Clicking Cancelar after a successful submit must keep the patient
+    in the table (the form just closes)."""
+    at = _render_pacientes()
+    _open_add_form(at)
+    _fill_add_form(at, name="Carlos Mantido", age=40)
+    _submit_add_form(at)
+
+    cancel = [b for b in at.button if b.label == "Cancelar"]
+    if cancel:
+        cancel[0].click()
+        at.run()
+
+    markup = _patient_link_markup(at)
+    assert "Carlos Mantido" in markup
+
+
+# ---------------------------------------------------------------------------
+# 2. Clicking the patient's name must open the right page.
+# ---------------------------------------------------------------------------
+
+
+def test_link_targets_ficha_when_patient_already_has_ficha():
+    at = _render_pacientes()
+    markup = _patient_link_markup(at)
+    # All base patients have a plan in the fixture → link should point to Ficha
+    assert "Ficha%20do%20Paciente" in markup
+    assert "Cadastro%20de%20Ficha%20do%20Paciente" not in markup
+
+
+def test_link_targets_cadastro_for_newly_registered_patient():
+    at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Recém Sem Ficha", age=22)
+    markup = _patient_link_markup(at)
+    # Find the line for our new patient
+    for line in markup.split("<a "):
+        if "Recém Sem Ficha" in line:
+            assert "Cadastro%20de%20Ficha%20do%20Paciente" in line
+            assert f"patient_id={pid}" in line
+            break
+    else:
+        pytest.fail("Link for new patient not found in markup")
+
+
+def test_deep_link_to_cadastro_finds_session_added_patient():
+    """The exact symptom: clicking the new patient's link raised
+    'Paciente não encontrado'. After the fix, the merge happens after
+    the form submit, so the cadastro page can find the patient."""
+    at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Encontrar no Cadastro", age=29)
+
+    at.query_params["nav"] = "Cadastro de Ficha do Paciente"
+    at.query_params["patient_id"] = pid
+    at.run()
+
+    ss = at.session_state
+    assert ss["page"] == "Cadastro de Ficha do Paciente"
+    assert ss["selected_patient_id"] == pid
+    rendered = "".join(str(m.value) for m in at.markdown)
+    assert "Paciente não encontrado" not in rendered
+    assert "Encontrar no Cadastro" in rendered  # patient name appears in header
+
+
+# ---------------------------------------------------------------------------
+# 3. The patient must persist across navigations (the "sumiu" symptom).
+# ---------------------------------------------------------------------------
+
+
+def test_patient_persists_after_navigating_to_cadastro_and_back():
+    at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Persistente", age=50)
+
+    # Go to cadastro
+    at.query_params["nav"] = "Cadastro de Ficha do Paciente"
+    at.query_params["patient_id"] = pid
+    at.run()
+    assert at.session_state["page"] == "Cadastro de Ficha do Paciente"
+
+    # Back to Pacientes
+    at.query_params["nav"] = "Pacientes"
+    if "patient_id" in at.query_params:
+        del at.query_params["patient_id"]
+    at.run()
+    assert "Persistente" in _patient_link_markup(at)
+    assert len(at.session_state["extra_patients"]) == 1
+
+
+def test_patient_persists_after_visiting_other_pages():
+    at = _render_pacientes()
+    _register_patient_via_form(at, name="Volta e Meia", age=31)
+
+    for nav in ["Visão Geral", "Mapa de Decisão", "Alertas", "Pacientes"]:
+        at.query_params["nav"] = nav
+        at.run()
+
+    assert "Volta e Meia" in _patient_link_markup(at)
+
+
+# ---------------------------------------------------------------------------
+# 4. Cadastro de Ficha → Ficha navigation & link target switching.
+# ---------------------------------------------------------------------------
+
+
+def test_cadastro_redirects_to_ficha_if_patient_already_has_one():
+    at = _render_pacientes()
+    # pat_001 already has a plan in the fixture
+    at.query_params["nav"] = "Cadastro de Ficha do Paciente"
+    at.query_params["patient_id"] = "pat_001"
+    at.run()
+    assert at.session_state["page"] == "Ficha do Paciente"
+    assert at.session_state["selected_patient_id"] == "pat_001"
+
+
+def test_cadastro_form_submit_navigates_to_ficha_page():
+    at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Vai pra Ficha", age=27)
+
+    at.query_params["nav"] = "Cadastro de Ficha do Paciente"
+    at.query_params["patient_id"] = pid
+    at.run()
+
+    # Fill the cadastro form and submit.
+    at.session_state["cadastro_ficha_objetivo"] = "Emagrecimento"
+    at.session_state["cadastro_ficha_peso_inicial"] = 80.0
+    at.session_state["cadastro_ficha_peso_atual"] = 79.5
+    at.session_state["cadastro_ficha_peso_meta"] = 70.0
+    at.session_state["cadastro_ficha_status"] = "Ativo"
+    at.session_state["cadastro_ficha_resumo"] = "Teste."
+    at.session_state["cadastro_ficha_inicio"] = pd.Timestamp.today().normalize().date()
+    at.session_state["cadastro_ficha_fim"] = (
+        pd.Timestamp.today().normalize() + pd.Timedelta(days=60)
+    ).date()
+    at.run()
+
+    submit = [b for b in at.button if b.label == "Cadastrar ficha"]
+    assert submit, "Cadastrar ficha button not found"
+    submit[0].click()
+    at.run()
+
+    # The handler must navigate to Ficha do Paciente and select the patient.
+    assert at.session_state["page"] == "Ficha do Paciente"
+    assert at.session_state["selected_patient_id"] == pid
+    assert len(at.session_state["extra_treatment_plans"]) == 1
+    assert len(at.session_state["extra_patient_goals"]) == 1
+
+
+def test_link_target_switches_from_cadastro_to_ficha_after_cadastro():
+    """After creating a ficha, the link in the Pacientes table must point
+    to 'Ficha do Paciente' instead of 'Cadastro de Ficha do Paciente'."""
+    at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Migrou pra Ficha", age=44)
+
+    # Cadastrar ficha
+    at.query_params["nav"] = "Cadastro de Ficha do Paciente"
+    at.query_params["patient_id"] = pid
+    at.run()
+    at.session_state["cadastro_ficha_objetivo"] = "Controle"
+    at.session_state["cadastro_ficha_peso_inicial"] = 90.0
+    at.session_state["cadastro_ficha_peso_atual"] = 88.0
+    at.session_state["cadastro_ficha_peso_meta"] = 80.0
+    at.session_state["cadastro_ficha_status"] = "Ativo"
+    at.session_state["cadastro_ficha_inicio"] = pd.Timestamp.today().normalize().date()
+    at.session_state["cadastro_ficha_fim"] = (
+        pd.Timestamp.today().normalize() + pd.Timedelta(days=60)
+    ).date()
+    at.run()
+    submit = [b for b in at.button if b.label == "Cadastrar ficha"][0]
+    submit.click()
+    at.run()
+
+    # Back to Pacientes
+    at.query_params["nav"] = "Pacientes"
+    if "patient_id" in at.query_params:
+        del at.query_params["patient_id"]
+    at.run()
+
+    markup = _patient_link_markup(at)
+    for line in markup.split("<a "):
+        if "Migrou pra Ficha" in line:
+            assert "Ficha%20do%20Paciente" in line
+            assert "Cadastro%20de%20Ficha%20do%20Paciente" not in line
+            break
+    else:
+        pytest.fail("Link for migrated patient not found in markup")
+
+
+# ---------------------------------------------------------------------------
+# 5. Form validation behaviour (reject empty / duplicate names).
+# ---------------------------------------------------------------------------
+
+
+def test_add_patient_form_rejects_empty_name():
+    at = _render_pacientes()
+    _open_add_form(at)
+    at.session_state["add_patient_name"] = ""
+    at.session_state["add_patient_age"] = 30
+    at.run()
+    _submit_add_form(at)
+    assert at.session_state["extra_patients"] == []
+    # Form should remain open so the user can fix the field
+    assert at.session_state["add_patient_open"] is True
+
+
+def test_add_patient_form_rejects_duplicate_name():
+    at = _render_pacientes()
+    _open_add_form(at)
+    at.session_state["add_patient_name"] = "Kelly Cristina Amorim"  # already in fixture
+    at.session_state["add_patient_age"] = 30
+    at.run()
+    _submit_add_form(at)
+    assert at.session_state["extra_patients"] == []
+    assert at.session_state["add_patient_open"] is True
+
+
+# ---------------------------------------------------------------------------
+# 6. Cancelar just closes the form (does not save anything).
+# ---------------------------------------------------------------------------
+
+
+def test_cancelar_with_empty_form_closes_without_saving():
+    at = _render_pacientes()
+    _open_add_form(at)
+    assert at.session_state["add_patient_open"] is True
+    cancel = [b for b in at.button if b.label == "Cancelar"]
+    assert cancel
+    cancel[0].click()
+    at.run()
+    assert at.session_state["add_patient_open"] is False
+    assert at.session_state["extra_patients"] == []
+
+
+def test_cancelar_does_not_lose_already_registered_patients():
+    at = _render_pacientes()
+    _register_patient_via_form(at, name="Antes do Cancelar", age=40)
+    # Reopen form, fill, then cancel
+    _open_add_form(at)
+    at.session_state["add_patient_name"] = "Sera Descartado"
+    at.session_state["add_patient_age"] = 25
+    at.run()
+    cancel = [b for b in at.button if b.label == "Cancelar"][0]
+    cancel.click()
+    at.run()
+    # The original patient is still there
+    assert any(
+        e["name"] == "Antes do Cancelar"
+        for e in at.session_state["extra_patients"]
+    )
+    assert "Antes do Cancelar" in _patient_link_markup(at)
+
+
+# ---------------------------------------------------------------------------
+# 7. Disk persistence (data/extra_data.json).
+#
+# These tests cover the layer added in this branch so that registered
+# patients and cadastradas fichas survive:
+#   * a Streamlit session being torn down (e.g. tab close / server restart);
+#   * a hard refresh in the browser.
+#
+# The conftest fixture ``_isolate_persistence_file`` redirects the file
+# path to a per-test tmp location, so we can inspect the on-disk payload
+# without polluting the developer's local checkout.
+# ---------------------------------------------------------------------------
+
+
+def _extras_file_path() -> str:
+    """Helper: read the current (monkeypatched) extras file path."""
+    from src.persistence import _get_extras_file
+
+    return str(_get_extras_file())
+
+
+def test_patient_registration_writes_to_disk():
+    """Submitting the add-patient form must persist the new patient to
+    ``data/extra_data.json`` (via ``src.persistence``) so it can be
+    reloaded on a future session."""
+    at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Persistido em Disco", age=27)
+
+    # The on-disk file must contain exactly this one extra patient.
+    from src.persistence import load_extras
+
+    extras = load_extras()
+    assert "extra_patients" in extras
+    assert len(extras["extra_patients"]) == 1
+    row = extras["extra_patients"][0]
+    assert row["patient_id"] == pid
+    assert row["name"] == "Persistido em Disco"
+
+    # The other keys must exist as empty lists (normalised payload).
+    for key in (
+        "extra_treatment_plans",
+        "extra_treatment_plan_items",
+        "extra_patient_goals",
+        "extra_weight_entries",
+    ):
+        assert extras[key] == []
+
+
+def test_registered_patient_persists_across_simulated_hard_refresh():
+    """After a hard refresh, ``st.session_state`` is wiped but the on-disk
+    file remains. The next render must reload the patient from disk so
+    it keeps appearing in the Pacientes table."""
+    at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Sobrevive ao Refresh", age=41)
+    assert pid in [p["patient_id"] for p in at.session_state["extra_patients"]]
+
+    # --- Simulate a hard refresh: wipe session state, keep the file. ---
+    # (In a real browser the WebSocket reconnects and a new session starts;
+    # AppTest's session_state survives `at.run()` calls, so we explicitly
+    # clear the keys that the persistence layer is responsible for.)
+    for key in (
+        "extra_patients",
+        "extra_treatment_plans",
+        "extra_treatment_plan_items",
+        "extra_patient_goals",
+        "extra_weight_entries",
+    ):
+        if key in at.session_state:
+            del at.session_state[key]
+    at.run()
+
+    # After the simulated reload, the patient must be back in the table.
+    markup = _patient_link_markup(at)
+    assert "Sobrevive ao Refresh" in markup, (
+        "Hard refresh lost the patient. Either `_ensure_state` did not "
+        "reload from disk, or `merge_extra_patients` ignored the reloaded "
+        "list. The on-disk file should be the source of truth on a fresh "
+        "session."
+    )
+    assert f"patient_id={pid}" in markup
+
+
+def test_cadastrada_ficha_persists_across_simulated_hard_refresh():
+    """Same property, but for a ficha cadastrada via the Cadastro de
+    Ficha form. Plan/goal/items/weight rows must all be reloaded from
+    disk after a simulated refresh."""
+    at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Ficha Persistente", age=33)
+
+    # Cadastrar a ficha.
+    at.query_params["nav"] = "Cadastro de Ficha do Paciente"
+    at.query_params["patient_id"] = pid
+    at.run()
+    at.session_state["cadastro_ficha_objetivo"] = "Emagrecimento"
+    at.session_state["cadastro_ficha_peso_inicial"] = 80.0
+    at.session_state["cadastro_ficha_peso_atual"] = 79.0
+    at.session_state["cadastro_ficha_peso_meta"] = 70.0
+    at.session_state["cadastro_ficha_status"] = "Ativo"
+    at.session_state["cadastro_ficha_resumo"] = "Plano de teste"
+    at.session_state["cadastro_ficha_inicio"] = pd.Timestamp.today().normalize().date()
+    at.session_state["cadastro_ficha_fim"] = (
+        pd.Timestamp.today().normalize() + pd.Timedelta(days=60)
+    ).date()
+    at.run()
+    submit = [b for b in at.button if b.label == "Cadastrar ficha"][0]
+    submit.click()
+    at.run()
+
+    # The submit must have written at least one plan, one goal, and one
+    # weight entry to disk.
+    from src.persistence import load_extras
+
+    extras = load_extras()
+    assert len(extras["extra_treatment_plans"]) == 1
+    assert len(extras["extra_patient_goals"]) == 1
+    assert len(extras["extra_weight_entries"]) == 1
+    assert extras["extra_treatment_plans"][0]["patient_id"] == pid
+
+    # --- Simulate a hard refresh. ---
+    for key in (
+        "extra_patients",
+        "extra_treatment_plans",
+        "extra_treatment_plan_items",
+        "extra_patient_goals",
+        "extra_weight_entries",
+    ):
+        if key in at.session_state:
+            del at.session_state[key]
+    at.query_params["nav"] = "Ficha do Paciente"
+    at.query_params["patient_id"] = pid
+    at.run()
+
+    # The Ficha do Paciente page must find the patient and the plan.
+    assert at.session_state["page"] == "Ficha do Paciente"
+    assert at.session_state["selected_patient_id"] == pid
+    rendered = "".join(str(m.value) for m in at.markdown)
+    assert "Ficha Persistente" in rendered
+    assert "Plano de teste" in rendered  # resumo from the form
+
+    # patient_summary rebuilds from the merged data; the persisted plan
+    # must be visible there. Build the merged data dict inline because
+    # AppTest's session_state is a SafeSessionState (unhashable for
+    # @st.cache_data).
+    from src.mock_data import load_mock_data
+    from src.components.add_patient import merge_extra_patients
+    from src.components.ficha import merge_extra_fichas
+    from src.metrics import patient_summary
+
+    base = load_mock_data()
+    merged = merge_extra_fichas(merge_extra_patients(base))
+    s2 = patient_summary(merged)
+    row = s2.loc[s2["patient_id"] == pid]
+    assert not row.empty
+    assert row.iloc[0]["status"] == "Ativo"

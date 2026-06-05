@@ -1,15 +1,20 @@
 """Utilities for session-state based navigation."""
 
-PAGES = [
+SIDEBAR_PAGES = [
     "Visão Geral",
     "Mapa de Decisão",
     "Pacientes",
-    "Ficha do Paciente",
     "Alertas",
     "Atualização de Dados",
     "Qualidade dos Dados",
 ]
-DEFAULT_PAGE = PAGES[0]
+
+INTERNAL_PAGES = [
+    "Ficha do Paciente",
+    "Cadastro de Ficha do Paciente",
+]
+PAGES = SIDEBAR_PAGES + INTERNAL_PAGES
+DEFAULT_PAGE = SIDEBAR_PAGES[0]
 
 
 def init_navigation_state() -> None:
@@ -33,7 +38,9 @@ def go_to(page: str) -> None:
 def open_patient(patient_id: str) -> None:
     """Select a patient and navigate to the patient detail page."""
     import streamlit as st
-
+    # When called from a widget callback, Streamlit will rerun after
+    # the callback returns. Calling `st.rerun()` inside a callback is
+    # effectively a no-op, so we only update session state here and
+    # rely on the caller's environment to trigger the run loop.
     st.session_state["selected_patient_id"] = patient_id
     st.session_state["page"] = "Ficha do Paciente"
-    st.rerun()

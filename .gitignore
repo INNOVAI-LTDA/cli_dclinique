@@ -1,13 +1,8 @@
-.venv/
+# Python bytecode
 __pycache__/
-**/__pycache__/
 *.pyc
-.env
-.streamlit/secrets.toml
-data/raw/
-data/real/
-*.xlsx
-*.xls
-*.csv
-*.pdf
-.DS_Store
+*.pyo
+
+# Session-added extras persisted by src/persistence.py
+data/extra_data.json
+data/.extra_data_*.json.tmp
