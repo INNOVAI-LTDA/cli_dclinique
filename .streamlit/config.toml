@@ -1,5 +1,6 @@
-# Streamlit runtime configuration tuned for the MAP app SLA targets.
-# Documented at https://docs.streamlit.io/library/advanced-features/configuration
+# Streamlit runtime configuration tuned for the MAP app SLA targets, both
+# locally and on Streamlit Community Cloud. Documented at
+# https://docs.streamlit.io/library/advanced-features/configuration
 
 [server]
 headless = true
@@ -10,6 +11,9 @@ enableStaticServing = true
 runOnSave = false
 # Faster file change polling (default 1s) so the server boots deterministically.
 fileWatcherType = "none"
+# Cap upload size on the "Atualização de Dados" page. Default is 200 MB; the
+# current flow only handles small spreadsheets.
+maxUploadSize = 50
 
 [browser]
 gatherUsageStats = false
