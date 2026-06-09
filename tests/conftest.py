@@ -5,19 +5,32 @@ tests rely on two complementary strategies:
 
 1.  ``FakeSessionState`` + ``monkeypatch`` — pure unit tests that
     substitute ``st.session_state`` with a dict-like object. This lets us
-    exercise the merge helpers, ID generators, and submit handlers
-    without spinning up a Streamlit runtime.
+    exercise the submit handlers and id-generation helpers without
+    spinning up a Streamlit runtime.
 
 2.  ``streamlit.testing.v1.AppTest`` — integration tests that run the
     real ``app.py`` script in an in-process simulator, asserting on the
     widgets, session state, and rendered markup.
+
+CSV isolation
+-------------
+Every test gets a fresh copy of the seed ``data/csv/`` directory under
+``tmp_path``. The data layer's ``_csv_dir_callable`` is monkeypatched
+to return that copy, so any ``append_row`` / ``update_row`` call during
+the test writes there instead of touching the developer's local
+checkout. After the test, ``tmp_path`` is wiped by pytest — the next
+test starts from a clean seed again.
 """
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import pytest
+
+CSV_DIR = Path(__file__).resolve().parents[1] / "data" / "csv"
 
 
 class FakeSessionState(dict):
@@ -47,11 +60,34 @@ def fake_session_state(monkeypatch):
 
 
 @pytest.fixture
-def base_data():
-    """Return the canonical ``load_mock_data()`` snapshot."""
-    from src.mock_data import load_mock_data
+def base_data(csv_dir):
+    """Return the canonical snapshot of the seed CSVs via the data layer.
 
-    return load_mock_data()
+    Reloading via ``load_all`` (not the cached ``get_data``) ensures the
+    fixture reflects the test's isolated tmp directory.
+    """
+    from src.data_layer import load_all
+
+    return load_all()
+
+
+@pytest.fixture
+def csv_dir(tmp_path, monkeypatch):
+    """Copy the seed ``data/csv/`` to ``tmp_path/csv`` and redirect the data layer.
+
+    The redirect is in effect for the duration of the test, so any
+    ``append_row`` / ``update_row`` / ``load_table`` call writes to the
+    tmp directory. The cleanup is handled by pytest's ``tmp_path``
+    fixture (the directory is removed after the test).
+    """
+    import src.data_layer.csv_backend as backend
+
+    test_dir = tmp_path / "csv"
+    if test_dir.exists():
+        shutil.rmtree(test_dir)
+    shutil.copytree(CSV_DIR, test_dir)
+    monkeypatch.setattr(backend, "_csv_dir_callable", lambda: test_dir)
+    return test_dir
 
 
 @pytest.fixture
@@ -91,36 +127,6 @@ def _isolate_streamlit_cache():
         pass
 
 
-@pytest.fixture(autouse=True)
-def _isolate_persistence_file(tmp_path, monkeypatch):
-    """Redirect ``src.persistence._get_extras_file`` to a per-test tmp file.
-
-    Ensures:
-    1. Tests never read or write the real ``data/extra_data.json`` of the
-       developer's local checkout.
-    2. Data left over by one test does not leak into the next.
-
-    The fixture resolves the file path lazily (each call inside the
-    component under test goes through ``_get_extras_file``), so monkey-
-    patching that function is enough — no need to chase every constant.
-    """
-    import src.persistence as persistence
-
-    test_file = tmp_path / "extra_data.json"
-    # Make sure no stale file from a prior run is read.
-    if test_file.exists():
-        test_file.unlink()
-    monkeypatch.setattr(persistence, "_get_extras_file", lambda: test_file)
-    yield
-    if test_file.exists():
-        test_file.unlink()
-
-
-def patient_rows_with_extras(base: dict[str, pd.DataFrame], extras: list[dict]) -> pd.DataFrame:
-    """Helper: build a patients DataFrame that includes the given extras
-    (matches what ``merge_extra_patients`` returns)."""
-    from src.schemas import EXPECTED_SCHEMAS
-
-    extras_df = pd.DataFrame(extras, columns=EXPECTED_SCHEMAS["patients"])
-    extras_df["created_at"] = pd.to_datetime(extras_df["created_at"], errors="coerce")
-    return pd.concat([base["patients"], extras_df], ignore_index=True)
+def patient_rows_only(base: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Helper: just the patients DataFrame from a base data dict."""
+    return base["patients"]

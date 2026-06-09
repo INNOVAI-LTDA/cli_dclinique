@@ -3,6 +3,16 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Session-added extras persisted by src/persistence.py
-data/extra_data.json
-data/.extra_data_*.json.tmp
+# Streamlit runtime secrets (configured via Streamlit Cloud UI)
+.streamlit/secrets.toml
+
+# Local env files
+.env
+.env.local
+
+# Anything marked as private client data — guard against accidental commit
+data/private/
+
+# Hypothesis / pytest caches
+.hypothesis/
+.pytest_cache/

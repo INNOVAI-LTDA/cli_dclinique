@@ -38,9 +38,11 @@ def _route(page: str) -> Callable:
 def get_data():
     # Deferred import keeps pandas out of the cold-start path of app.py
     # (Streamlit only imports the module body on the first call, after the
-    # server is already serving the health endpoint).
-    from src.mock_data import load_mock_data
-    return load_mock_data()
+    # server is already serving the health endpoint). The CSV backend
+    # is the new single source of truth — see ``src.data_layer`` and
+    # ``scripts/seed_csvs.py`` for the seed fixture.
+    from src.data_layer import load_all
+    return load_all()
 
 
 def main() -> None:

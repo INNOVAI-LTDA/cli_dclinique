@@ -1,16 +1,15 @@
 """End-to-end integration tests for the MAP shell.
 
 These tests drive the real ``app.py`` through ``streamlit.testing.v1.AppTest``
-and assert on the rendered markup, session state, and navigation flow.
-They cover the user-reported bug scenarios:
+and assert on the rendered markup, session state, and the on-disk CSV
+state. They cover the user-reported bug scenarios (patient disappears on
+refresh, deep-link 404, link target switching) and the surrounding
+flow (navigation, cadastro, form validation).
 
-* Patient not visible in the table right after the add-patient submit
-* "Cancelar" was the only way to see the freshly-added patient
-* Clicking the patient's link showed "Paciente não encontrado"
-* The patient disappeared when returning to the Pacientes page
-
-And the surrounding flow (link routing based on ``patient_has_ficha``,
-Cadastro → Ficha redirect, link target switches after a ficha is created).
+The ``csv_dir`` fixture (autouse) redirects the data layer to a fresh
+copy of the seed CSVs under ``tmp_path`` for every test, so the tests
+neither pollute the developer's local checkout nor leak state into one
+another.
 """
 from __future__ import annotations
 
@@ -20,6 +19,8 @@ import pandas as pd
 import pytest
 
 from streamlit.testing.v1 import AppTest
+
+from src.data_layer import load_table
 
 
 # ---------------------------------------------------------------------------
@@ -69,9 +70,10 @@ def _register_patient_via_form(at: AppTest, *, name: str, age: int) -> str:
     _open_add_form(at)
     _fill_add_form(at, name=name, age=age)
     _submit_add_form(at)
-    extras = at.session_state["extra_patients"]
-    assert len(extras) == 1, f"Expected 1 extra patient, got {len(extras)}"
-    return extras[0]["patient_id"]
+    patients = load_table("patients")
+    new_rows = patients[patients["patient_id"].str.startswith("pat_new_")]
+    assert len(new_rows) == 1, f"Expected 1 new patient, got {len(new_rows)}"
+    return str(new_rows.iloc[0]["patient_id"])
 
 
 # ---------------------------------------------------------------------------
@@ -80,23 +82,23 @@ def _register_patient_via_form(at: AppTest, *, name: str, age: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def test_newly_registered_patient_appears_in_table_on_same_render():
+def test_newly_registered_patient_appears_in_table_on_same_render(csv_dir):
     at = _render_pacientes()
     pid = _register_patient_via_form(at, name="Maria Bug Original", age=33)
 
-    # The very first rerun after submit must already show the patient.
+    # The rerun triggered by the form submit must already show the patient.
     markup = _patient_link_markup(at)
     assert "Maria Bug Original" in markup, (
         "Bug reproduced: freshly registered patient is not visible in the table "
-        "until a manual rerun is forced. The fix in pacientes.py reorders the "
-        "render so the form runs before the merge."
+        "until a manual rerun is forced. The submit handler must rerun so the "
+        "cache is repopulated from the CSV."
     )
     # Link target must point to Cadastro de Ficha do Paciente (no ficha yet).
     assert f"patient_id={pid}" in markup
     assert "Cadastro%20de%20Ficha%20do%20Paciente" in markup
 
 
-def test_cancelar_after_submit_does_not_lose_the_patient():
+def test_cancelar_after_submit_does_not_lose_the_patient(csv_dir):
     """Clicking Cancelar after a successful submit must keep the patient
     in the table (the form just closes)."""
     at = _render_pacientes()
@@ -118,15 +120,15 @@ def test_cancelar_after_submit_does_not_lose_the_patient():
 # ---------------------------------------------------------------------------
 
 
-def test_link_targets_ficha_when_patient_already_has_ficha():
+def test_link_targets_ficha_when_patient_already_has_ficha(csv_dir):
     at = _render_pacientes()
     markup = _patient_link_markup(at)
-    # All base patients have a plan in the fixture → link should point to Ficha
+    # All base patients have a plan in the seed → link should point to Ficha
     assert "Ficha%20do%20Paciente" in markup
     assert "Cadastro%20de%20Ficha%20do%20Paciente" not in markup
 
 
-def test_link_targets_cadastro_for_newly_registered_patient():
+def test_link_targets_cadastro_for_newly_registered_patient(csv_dir):
     at = _render_pacientes()
     pid = _register_patient_via_form(at, name="Recém Sem Ficha", age=22)
     markup = _patient_link_markup(at)
@@ -140,10 +142,11 @@ def test_link_targets_cadastro_for_newly_registered_patient():
         pytest.fail("Link for new patient not found in markup")
 
 
-def test_deep_link_to_cadastro_finds_session_added_patient():
+def test_deep_link_to_cadastro_finds_session_added_patient(csv_dir):
     """The exact symptom: clicking the new patient's link raised
-    'Paciente não encontrado'. After the fix, the merge happens after
-    the form submit, so the cadastro page can find the patient."""
+    'Paciente não encontrado'. The cadastro page reads the CSV directly,
+    so the freshly-registered patient is visible without any session
+    state dance."""
     at = _render_pacientes()
     pid = _register_patient_via_form(at, name="Encontrar no Cadastro", age=29)
 
@@ -164,7 +167,7 @@ def test_deep_link_to_cadastro_finds_session_added_patient():
 # ---------------------------------------------------------------------------
 
 
-def test_patient_persists_after_navigating_to_cadastro_and_back():
+def test_patient_persists_after_navigating_to_cadastro_and_back(csv_dir):
     at = _render_pacientes()
     pid = _register_patient_via_form(at, name="Persistente", age=50)
 
@@ -180,10 +183,12 @@ def test_patient_persists_after_navigating_to_cadastro_and_back():
         del at.query_params["patient_id"]
     at.run()
     assert "Persistente" in _patient_link_markup(at)
-    assert len(at.session_state["extra_patients"]) == 1
+    # Still exactly one extra patient in the CSV
+    new_rows = load_table("patients")
+    assert len(new_rows[new_rows["patient_id"].str.startswith("pat_new_")]) == 1
 
 
-def test_patient_persists_after_visiting_other_pages():
+def test_patient_persists_after_visiting_other_pages(csv_dir):
     at = _render_pacientes()
     _register_patient_via_form(at, name="Volta e Meia", age=31)
 
@@ -199,9 +204,9 @@ def test_patient_persists_after_visiting_other_pages():
 # ---------------------------------------------------------------------------
 
 
-def test_cadastro_redirects_to_ficha_if_patient_already_has_one():
+def test_cadastro_redirects_to_ficha_if_patient_already_has_one(csv_dir):
     at = _render_pacientes()
-    # pat_001 already has a plan in the fixture
+    # pat_001 already has a plan in the seed
     at.query_params["nav"] = "Cadastro de Ficha do Paciente"
     at.query_params["patient_id"] = "pat_001"
     at.run()
@@ -209,7 +214,7 @@ def test_cadastro_redirects_to_ficha_if_patient_already_has_one():
     assert at.session_state["selected_patient_id"] == "pat_001"
 
 
-def test_cadastro_form_submit_navigates_to_ficha_page():
+def test_cadastro_form_submit_navigates_to_ficha_page(csv_dir):
     at = _render_pacientes()
     pid = _register_patient_via_form(at, name="Vai pra Ficha", age=27)
 
@@ -238,11 +243,14 @@ def test_cadastro_form_submit_navigates_to_ficha_page():
     # The handler must navigate to Ficha do Paciente and select the patient.
     assert at.session_state["page"] == "Ficha do Paciente"
     assert at.session_state["selected_patient_id"] == pid
-    assert len(at.session_state["extra_treatment_plans"]) == 1
-    assert len(at.session_state["extra_patient_goals"]) == 1
+    # And the plan/goal/weight rows must be in their CSVs
+    plans = load_table("treatment_plans")
+    goals = load_table("patient_goals")
+    assert len(plans[plans["patient_id"] == pid]) == 1
+    assert len(goals[goals["patient_id"] == pid]) == 1
 
 
-def test_link_target_switches_from_cadastro_to_ficha_after_cadastro():
+def test_link_target_switches_from_cadastro_to_ficha_after_cadastro(csv_dir):
     """After creating a ficha, the link in the Pacientes table must point
     to 'Ficha do Paciente' instead of 'Cadastro de Ficha do Paciente'."""
     at = _render_pacientes()
@@ -287,26 +295,28 @@ def test_link_target_switches_from_cadastro_to_ficha_after_cadastro():
 # ---------------------------------------------------------------------------
 
 
-def test_add_patient_form_rejects_empty_name():
+def test_add_patient_form_rejects_empty_name(csv_dir):
     at = _render_pacientes()
     _open_add_form(at)
     at.session_state["add_patient_name"] = ""
     at.session_state["add_patient_age"] = 30
     at.run()
     _submit_add_form(at)
-    assert at.session_state["extra_patients"] == []
+    new_rows = load_table("patients")
+    assert len(new_rows[new_rows["patient_id"].str.startswith("pat_new_")]) == 0
     # Form should remain open so the user can fix the field
     assert at.session_state["add_patient_open"] is True
 
 
-def test_add_patient_form_rejects_duplicate_name():
+def test_add_patient_form_rejects_duplicate_name(csv_dir):
     at = _render_pacientes()
     _open_add_form(at)
-    at.session_state["add_patient_name"] = "Kelly Cristina Amorim"  # already in fixture
+    at.session_state["add_patient_name"] = "Kelly Cristina Amorim"  # already in seed
     at.session_state["add_patient_age"] = 30
     at.run()
     _submit_add_form(at)
-    assert at.session_state["extra_patients"] == []
+    new_rows = load_table("patients")
+    assert len(new_rows[new_rows["patient_id"].str.startswith("pat_new_")]) == 0
     assert at.session_state["add_patient_open"] is True
 
 
@@ -315,7 +325,7 @@ def test_add_patient_form_rejects_duplicate_name():
 # ---------------------------------------------------------------------------
 
 
-def test_cancelar_with_empty_form_closes_without_saving():
+def test_cancelar_with_empty_form_closes_without_saving(csv_dir):
     at = _render_pacientes()
     _open_add_form(at)
     assert at.session_state["add_patient_open"] is True
@@ -324,10 +334,11 @@ def test_cancelar_with_empty_form_closes_without_saving():
     cancel[0].click()
     at.run()
     assert at.session_state["add_patient_open"] is False
-    assert at.session_state["extra_patients"] == []
+    new_rows = load_table("patients")
+    assert len(new_rows[new_rows["patient_id"].str.startswith("pat_new_")]) == 0
 
 
-def test_cancelar_does_not_lose_already_registered_patients():
+def test_cancelar_does_not_lose_already_registered_patients(csv_dir):
     at = _render_pacientes()
     _register_patient_via_form(at, name="Antes do Cancelar", age=40)
     # Reopen form, fill, then cancel
@@ -339,79 +350,49 @@ def test_cancelar_does_not_lose_already_registered_patients():
     cancel.click()
     at.run()
     # The original patient is still there
-    assert any(
-        e["name"] == "Antes do Cancelar"
-        for e in at.session_state["extra_patients"]
-    )
+    patients = load_table("patients")
+    assert "Antes do Cancelar" in patients["name"].values
     assert "Antes do Cancelar" in _patient_link_markup(at)
 
 
 # ---------------------------------------------------------------------------
-# 7. Disk persistence (data/extra_data.json).
+# 7. CSV persistence (the F5 scenario).
 #
-# These tests cover the layer added in this branch so that registered
-# patients and cadastradas fichas survive:
-#   * a Streamlit session being torn down (e.g. tab close / server restart);
-#   * a hard refresh in the browser.
-#
-# The conftest fixture ``_isolate_persistence_file`` redirects the file
-# path to a per-test tmp location, so we can inspect the on-disk payload
-# without polluting the developer's local checkout.
+# The data layer's CSVs are the single source of truth: registering a
+# patient must persist to ``patients.csv`` so a hard refresh (which wipes
+# ``st.session_state`` in a real browser) does not lose the row.
 # ---------------------------------------------------------------------------
 
 
-def _extras_file_path() -> str:
-    """Helper: read the current (monkeypatched) extras file path."""
-    from src.persistence import _get_extras_file
-
-    return str(_get_extras_file())
-
-
-def test_patient_registration_writes_to_disk():
-    """Submitting the add-patient form must persist the new patient to
-    ``data/extra_data.json`` (via ``src.persistence``) so it can be
-    reloaded on a future session."""
+def test_patient_registration_writes_to_csv(csv_dir):
     at = _render_pacientes()
     pid = _register_patient_via_form(at, name="Persistido em Disco", age=27)
 
-    # The on-disk file must contain exactly this one extra patient.
-    from src.persistence import load_extras
-
-    extras = load_extras()
-    assert "extra_patients" in extras
-    assert len(extras["extra_patients"]) == 1
-    row = extras["extra_patients"][0]
-    assert row["patient_id"] == pid
+    # The CSV must contain exactly this one new patient row.
+    patients = load_table("patients")
+    new_rows = patients[patients["patient_id"] == pid]
+    assert len(new_rows) == 1
+    row = new_rows.iloc[0]
     assert row["name"] == "Persistido em Disco"
-
-    # The other keys must exist as empty lists (normalised payload).
-    for key in (
-        "extra_treatment_plans",
-        "extra_treatment_plan_items",
-        "extra_patient_goals",
-        "extra_weight_entries",
-    ):
-        assert extras[key] == []
+    assert row["patient_id"] == pid
 
 
-def test_registered_patient_persists_across_simulated_hard_refresh():
-    """After a hard refresh, ``st.session_state`` is wiped but the on-disk
-    file remains. The next render must reload the patient from disk so
+def test_registered_patient_persists_across_simulated_hard_refresh(csv_dir):
+    """After a hard refresh, ``st.session_state`` is wiped but the CSV
+    remains. The next render must reload the patient from the CSV so
     it keeps appearing in the Pacientes table."""
     at = _render_pacientes()
     pid = _register_patient_via_form(at, name="Sobrevive ao Refresh", age=41)
-    assert pid in [p["patient_id"] for p in at.session_state["extra_patients"]]
+    assert len(load_table("patients")[load_table("patients")["patient_id"] == pid]) == 1
 
-    # --- Simulate a hard refresh: wipe session state, keep the file. ---
-    # (In a real browser the WebSocket reconnects and a new session starts;
-    # AppTest's session_state survives `at.run()` calls, so we explicitly
-    # clear the keys that the persistence layer is responsible for.)
+    # --- Simulate a hard refresh: wipe the session, keep the CSV. ---
+    # In a real browser the WebSocket reconnects and a new session
+    # starts; AppTest's session_state survives ``at.run()`` calls, so we
+    # explicitly clear the keys we don't want to leak across runs.
     for key in (
-        "extra_patients",
-        "extra_treatment_plans",
-        "extra_treatment_plan_items",
-        "extra_patient_goals",
-        "extra_weight_entries",
+        "add_patient_open",
+        "patients_page",
+        "selected_patient_id",
     ):
         if key in at.session_state:
             del at.session_state[key]
@@ -420,18 +401,17 @@ def test_registered_patient_persists_across_simulated_hard_refresh():
     # After the simulated reload, the patient must be back in the table.
     markup = _patient_link_markup(at)
     assert "Sobrevive ao Refresh" in markup, (
-        "Hard refresh lost the patient. Either `_ensure_state` did not "
-        "reload from disk, or `merge_extra_patients` ignored the reloaded "
-        "list. The on-disk file should be the source of truth on a fresh "
-        "session."
+        "Hard refresh lost the patient. The data layer reads from the CSV "
+        "on every load_table call, so the row must survive the cache and "
+        "session_state wipe."
     )
     assert f"patient_id={pid}" in markup
 
 
-def test_cadastrada_ficha_persists_across_simulated_hard_refresh():
+def test_cadastrada_ficha_persists_across_simulated_hard_refresh(csv_dir):
     """Same property, but for a ficha cadastrada via the Cadastro de
     Ficha form. Plan/goal/items/weight rows must all be reloaded from
-    disk after a simulated refresh."""
+    the CSVs after a simulated refresh."""
     at = _render_pacientes()
     pid = _register_patient_via_form(at, name="Ficha Persistente", age=33)
 
@@ -455,22 +435,20 @@ def test_cadastrada_ficha_persists_across_simulated_hard_refresh():
     at.run()
 
     # The submit must have written at least one plan, one goal, and one
-    # weight entry to disk.
-    from src.persistence import load_extras
-
-    extras = load_extras()
-    assert len(extras["extra_treatment_plans"]) == 1
-    assert len(extras["extra_patient_goals"]) == 1
-    assert len(extras["extra_weight_entries"]) == 1
-    assert extras["extra_treatment_plans"][0]["patient_id"] == pid
+    # weight entry to the CSVs.
+    plans = load_table("treatment_plans")
+    goals = load_table("patient_goals")
+    weights = load_table("weight_entries")
+    assert len(plans[plans["patient_id"] == pid]) == 1
+    assert len(goals[goals["patient_id"] == pid]) == 1
+    assert len(weights[weights["patient_id"] == pid]) == 1
 
     # --- Simulate a hard refresh. ---
     for key in (
-        "extra_patients",
-        "extra_treatment_plans",
-        "extra_treatment_plan_items",
-        "extra_patient_goals",
-        "extra_weight_entries",
+        "add_patient_open",
+        "patients_page",
+        "selected_patient_id",
+        "page",
     ):
         if key in at.session_state:
             del at.session_state[key]
@@ -484,19 +462,3 @@ def test_cadastrada_ficha_persists_across_simulated_hard_refresh():
     rendered = "".join(str(m.value) for m in at.markdown)
     assert "Ficha Persistente" in rendered
     assert "Plano de teste" in rendered  # resumo from the form
-
-    # patient_summary rebuilds from the merged data; the persisted plan
-    # must be visible there. Build the merged data dict inline because
-    # AppTest's session_state is a SafeSessionState (unhashable for
-    # @st.cache_data).
-    from src.mock_data import load_mock_data
-    from src.components.add_patient import merge_extra_patients
-    from src.components.ficha import merge_extra_fichas
-    from src.metrics import patient_summary
-
-    base = load_mock_data()
-    merged = merge_extra_fichas(merge_extra_patients(base))
-    s2 = patient_summary(merged)
-    row = s2.loc[s2["patient_id"] == pid]
-    assert not row.empty
-    assert row.iloc[0]["status"] == "Ativo"

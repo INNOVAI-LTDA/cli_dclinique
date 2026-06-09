@@ -1,0 +1,9 @@
+satisfaction_id,patient_id,plan_id,date,satisfaction_status,score,notes
+sat_001,pat_001,plan_001,2026-06-01,Satisfeito,9,Satisfação fictícia: Satisfeito.
+sat_002,pat_002,plan_002,2026-06-01,Neutro,7,Satisfação fictícia: Neutro.
+sat_003,pat_003,plan_003,2026-06-01,Insatisfeito,6,Satisfação fictícia: Insatisfeito.
+sat_004,pat_004,plan_004,2026-06-01,Insatisfeito,4,Satisfação fictícia: Insatisfeito.
+sat_005,pat_005,plan_005,2026-06-01,Insatisfeito,5,Satisfação fictícia: Insatisfeito.
+sat_006,pat_006,plan_006,2026-06-01,Satisfeito,8,Satisfação fictícia: Satisfeito.
+sat_007,pat_007,plan_007,2026-06-01,Satisfeito,9,Satisfação fictícia: Satisfeito.
+sat_008,pat_008,plan_008,2026-06-01,Não informado,0,Satisfação fictícia: Não informado.
