@@ -13,6 +13,10 @@ __pycache__/
 # Anything marked as private client data — guard against accidental commit
 data/private/
 
+# Real patient PDFs (input for future parser work, never versioned)
+# Contains PII by design; processing happens in throwaway worktrees only.
+data/pacientes_e_planos/
+
 # Hypothesis / pytest caches
 .hypothesis/
 .pytest_cache/

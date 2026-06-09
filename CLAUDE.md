@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Projecto
 
-**MAP** (Minimum Acceptable Product) — casca navegável Streamlit para acompanhamento de pacientes em planos de tratamento. Dados fictícios em CSVs versionados em `data/csv/`, modelados como se viessem do banco futuro. Não há parser real de PDF/Excel, Supabase, login, deploy, WhatsApp ou Google Drive.
+**MAP** (Minimum Acceptable Product) — casca navegável Streamlit para acompanhamento de pacientes em planos de tratamento. Dados fictícios em CSVs versionados em `data/csv/`, modelados como se viessem do banco futuro. Não há parser real de PDF/Excel, Supabase, login, WhatsApp ou Google Drive. O **deploy no Streamlit Community Cloud** foi liberado (ver `DEPLOY.md` para o gate de LGPD, setup e modelo de acesso); o gate continua obrigatório antes de qualquer publicação.
 
 ## Comandos essenciais
 
@@ -78,7 +78,7 @@ A sidebar (`src/components/sidebar.py`) também aceita deep-link via query param
 
 As restrições abaixo aparecem em todos os `.github/agents/*.agent.md` e `.github/prompts/*.prompt.md` e devem ser respeitadas em qualquer mudança:
 
-- **Não** implementar parser real de PDF/Excel, Supabase, login, deploy, WhatsApp, Google Drive ou outras integrações externas.
+- **Não** implementar parser real de PDF/Excel, Supabase, login, WhatsApp, Google Drive ou outras integrações externas. **Deploy no Streamlit Cloud é exceção documentada** (ver `DEPLOY.md`); o gate de LGPD antes de qualquer publicação é obrigatório.
 - **Não** expandir escopo funcional sem alinhamento — o projeto é uma casca navegável, não o produto final.
 - **Preservar** nomes de campos e o contrato de `load_all()` (ver `src/schemas.py`).
 - **Não** aceitar pendências em validação sem registrar impacto.

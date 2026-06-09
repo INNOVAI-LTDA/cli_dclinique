@@ -3,8 +3,8 @@
 > **Status desta versão:** os artefatos para deploy estão **preparados**
 > (`.python-version`, `requirements.txt` com pinos, `.streamlit/config.toml`,
 > `.streamlit/secrets.toml.example`, `scripts/scan_pii.py`, este guia).
-> **Nenhum deploy efetivo foi feito.** O deploy real só deve acontecer
-> depois que o gate de LGPD abaixo for fechado.
+> O gate de LGPD abaixo foi **fechado** para o release inicial
+> (apontamento em §2). Deploys futuros devem repetir o gate.
 
 ## 1. TL;DR
 
@@ -40,6 +40,31 @@ commitado. LGPD classifica dados de saúde como sensíveis.
    reais e **nunca** deve ir para o controle de versão.
 4. **Confirmar que `data/images/` não tem capturas de tela com dados
    pessoais** (nomes, pesos identificáveis, etc.).
+
+### 2.1 Sign-off do release inicial (2026-06-08)
+
+Auditoria rodada por `dmenescal` (proprietário) e validada nesta data:
+
+- [x] **Item 1** — `scripts/scan_pii.py` rodado em `dev-map` no commit `bd15e39`.
+  8 candidatos em `data/csv/patients.csv` (coluna `phone`, linhas 2–9):
+  `(62) 99999-0001` a `(62) 99999-0008` — sequência idêntica no mesmo DDD,
+  padrão claramente sintético do seed `scripts/seed_csvs.py` → `src.mock_data`.
+  **Resolvido como falso-positivo.** Outros 7 candidatos foram nomes em
+  filenames de `data/pacientes_e_planos/`, que está untracked e é
+  ignorado pelo `.gitignore` (ver §3 do checklist) — também resolvido.
+- [x] **Item 2** — `data/csv/*.csv` revisado: 11 tabelas, todas seed do
+  `mock_data.py`. Nomes de pacientes, DDD de telefone e datas são
+  fictícios por construção. Sem PII real.
+- [x] **Item 3** — `data/pacientes_e_planos/` continua untracked e
+  **agora também está no `.gitignore`** (reforço contra `git add .`
+  acidental). 14 PDFs com nomes reais permanecem no disco do dev,
+  fora do repo.
+- [x] **Item 4** — `data/images/` contém 7 PNGs nomeados por página
+  (`Alertas.png`, `Croquis_SAD_DClinique.png`, `Ficha_paciente.png`,
+  `Mapa_decisao.png`, `Pacientes.png`, `Painel_lateral.png`,
+  `Qualidade_dados.png`, `Visao_geral.png`) e o diretório
+  `icones_Croquis_SVG/`. **Confirmado pelo proprietário em 2026-06-08:**
+  conteúdo é fictício (UI/design base), sem dado pessoal.
 
 Se houver necessidade de processar os PDFs de
 `data/pacientes_e_planos/`, o pipeline de extração pertence a um
@@ -171,8 +196,34 @@ versionado, não no servidor do Streamlit.
 | `requirements.txt` | Pinos com compatible release para build reprodutível |
 | `.streamlit/config.toml` | Postura de produção: `headless`, `gatherUsageStats=false`, `maxUploadSize=50` |
 | `.streamlit/secrets.toml.example` | Documenta o formato dos secrets (o real é gitignored) |
-| `.gitignore` | Exclui `secrets.toml`, `.env`, `data/private/` |
+| `.gitignore` | Exclui `secrets.toml`, `.env`, `data/private/`, `data/pacientes_e_planos/` |
 | `scripts/scan_pii.py` | Ferramenta auxiliar do gate de LGPD |
 | `DEPLOY.md` (este) | Guia de release |
 | `README.md` | Aponta para este guia na seção "Deploy" |
-| `CLAUDE.md` | **Não** toca em deploy — restrição permanece até o release real |
+| `CLAUDE.md` | Marca o deploy como exceção documentada, com gate de LGPD obrigatório |
+
+## 10. Release inicial — 2026-06-08
+
+| Campo | Valor |
+|---|---|
+| Branch de origem | `dev-map` (após PR `feature-streamlit-deploy-prep` mergeado) |
+| Branch de deploy | `main` |
+| Slug do app | `deva-dclinique` |
+| URL | `https://deva-dclinique.streamlit.app` |
+| Modelo de acesso | Private + lista de emails convidados |
+| Convidados (self) | `carreira.outlier@gmail.com` |
+| Convidados (cliente) | `jaderbraz@gmail.com` |
+| Dono / admin | `carreira.outlier@gmail.com` |
+| Stack | Python 3.13, Streamlit 1.58.0, pandas 3.0.3, plotly 6.7.0+, openpyxl 3.1.5 |
+| Secrets | nenhum configurado (nenhuma chamada a `st.secrets` no `src/`) |
+
+**Plano de acesso gradual:**
+
+1. Após PR mergeado e app criado, **só você** está convidado.
+   Valida o boot, navegação, deep-link, latência.
+2. Se smoke passa, **convida o cliente** (`jaderbraz@gmail.com`).
+3. Cliente interage, dúvidas surgem — você é o ponto de triagem.
+4. Próximas rodadas (Supabase, escala, multi-tenant) acontecem **depois**
+   desse ciclo, com a base de uso real para guiar decisões.
+
+**Plano de rollback** (caso o smoke falhe): ver §7.
