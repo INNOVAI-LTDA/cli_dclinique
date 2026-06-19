@@ -55,6 +55,44 @@ NEW_ID_PREFIX: dict[str, str] = {
     "weight_entries": "w_new",
 }
 
+# Per-table dtype maps (mirror de csv_backend._DATE_COLUMNS etc.).
+# Usados por _coerce_dtypes para restaurar o dtype pandas depois
+# de SELECT * -- sem isso, colunas TIMESTAMP voltam como object
+# (datetime do psycopg) ao inves de datetime64, e o downstream
+# (metrics.patient_summary, charts, etc.) quebra com
+# `TypeError: unsupported operand type(s) for -: 'ndarray' and 'Timestamp'`.
+# O map em schema.py e' tuple-based (para DDL); este aqui e' per-table
+# (para coerção pandas). Refactor para um modulo compartilhado e'
+# TODO -- os dois estao em sync manual por enquanto.
+_DATE_COLUMNS: dict[str, set[str]] = {
+    "patients": {"created_at"},
+    "treatment_plans": {"issue_date", "start_date", "end_date"},
+    "execution_summary": {"plan_created_at"},
+    "appointments": {"appointment_start", "appointment_end"},
+    "appointment_items": {"appointment_start"},
+    "patient_goals": {"target_date"},
+    "weight_entries": {"measurement_date"},
+    "satisfaction_entries": {"date"},
+    "alerts": {"created_at"},
+}
+_BOOL_COLUMNS: dict[str, set[str]] = {
+    "treatment_plans": {"is_renewal"},
+    "treatment_plan_items": {"needs_manual_review"},
+}
+_NULLABLE_INT_COLUMNS: dict[str, set[str]] = {
+    "patients": {"age"},
+    "treatment_plan_items": {"sessions_expected"},
+    "execution_summary": {"sessions_expected", "sessions_completed", "sessions_remaining"},
+    "satisfaction_entries": {"score"},
+}
+# psycopg retorna float Python para DOUBLE PRECISION; pandas infere
+# float64 sem coerce. Mantemos o map explicito para documentacao e
+# para o caso futuro de o driver mudar.
+_FLOAT_COLUMNS: dict[str, set[str]] = {
+    "weight_entries": {"weight"},
+    "patient_goals": {"initial_weight", "target_weight"},
+}
+
 # Module-level cache of EXPECTED_SCHEMAS. Populated lazily on first
 # access by :func:`_columns_for`; cleared if the test patches the
 # underlying schema. Keeps validation O(1) after the first call.
@@ -122,6 +160,34 @@ def _validate_table(table: str) -> str:
     return table
 
 
+def _coerce_dtypes(df: pd.DataFrame, table: str) -> pd.DataFrame:
+    """Restore os pandas dtypes depois de um SELECT * do Postgres.
+
+    psycopg devolve datetime/Timestamp como ``datetime.datetime``
+    (objeto Python), e boolean como ``bool`` (objeto Python), e
+    inteiros como ``int`` (objeto Python). Sem coerce, o pandas
+    infere dtype ``object`` para essas colunas, e o downstream
+    quebra: ``Series - Timestamp`` falha com TypeError, e
+    ``Series / Series`` nao consegue distinguir int de NaN.
+
+    O csv_backend aplica o mesmo coerce no load (ver
+    csv_backend._coerce_dtypes); o espelhamos aqui para manter
+    a paridade de tipos entre os dois backends. Idempotente:
+    se a coluna ja' tem o dtype certo, ``pd.to_datetime`` e'
+    no-op, ``astype(bool)`` e' no-op, ``astype('Int64')`` e' no-op.
+    """
+    for col in _DATE_COLUMNS.get(table, ()):
+        if col in df.columns:
+            df[col] = _import_pandas().to_datetime(df[col], errors="coerce")
+    for col in _BOOL_COLUMNS.get(table, ()):
+        if col in df.columns:
+            df[col] = df[col].astype(bool)
+    for col in _NULLABLE_INT_COLUMNS.get(table, ()):
+        if col in df.columns:
+            df[col] = df[col].astype("Int64")
+    return df
+
+
 # ---------------------------------------------------------------------------
 # Read
 # ---------------------------------------------------------------------------
@@ -155,6 +221,11 @@ def load_table(table: str) -> Any:
         rows = cur.fetchall()
 
     df = pd.DataFrame(rows, columns=col_names)
+    # Restaura os dtypes pandas (TIMESTAMP -> datetime64, etc.) para
+    # casar com o que o csv_backend entrega. Sem isso, colunas
+    # TIMESTAMP vem como object (datetime do psycopg) e quebram o
+    # downstream (metrics.patient_summary, charts, etc.).
+    df = _coerce_dtypes(df, table)
     return df.reindex(columns=columns)
 
 

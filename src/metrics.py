@@ -30,8 +30,14 @@ def patient_summary(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
         ["sessions_expected", "sessions_completed", "sessions_remaining"]
     ].fillna(0)
     # Vectorised engagement rate (replaces an `apply(axis=1)` Python loop).
+    # `np.errstate(divide="ignore")` NAO silencia `ZeroDivisionError` --
+    # a Series.__truediv__ do pandas dispatcha pro `/` nativo do Python
+    # quando ha 0 no denominador, e Python levanta (nao emite warning).
+    # Por isso substituimos 0 por NaN antes da divisao: o .fillna(0) na
+    # proxima linha cobre o caso "sem expectativa" sem levantar excecao.
+    expected = summary["sessions_expected"].replace(0, pd.NA)
     with __import__("numpy").errstate(divide="ignore", invalid="ignore"):
-        rate = summary["sessions_completed"] / summary["sessions_expected"]
+        rate = summary["sessions_completed"] / expected
     summary["engagement_rate"] = rate.fillna(0)
     summary["engagement_level"] = _classify_engagement_vector(summary["engagement_rate"])
     summary["is_engaged"] = summary["engagement_level"].isin(["Alto"])
