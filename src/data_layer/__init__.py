@@ -1,24 +1,136 @@
-"""CSV-backed data layer for the MAP shell.
+"""Router for the MAP data layer.
 
-This package replaces the previous in-memory ``src.mock_data`` flow with an
-on-disk CSV store under ``data/csv/``. The full public surface is
-re-exported from :mod:`src.data_layer` itself, so the rest of the app can
-just ``from src.data_layer import load_all, append_row, next_id, update_row``.
+Seleciona entre :mod:`postgres_backend` (default, Neon) e
+:mod:`csv_backend` (fallback) com base na env var ``DCLINIQUE_BACKEND``.
+O backend escolhido e' carregado lazy na primeira chamada a uma
+funcao publica, entao carregar este modulo NAO dispara nenhum
+import externo (psycopg, streamlit, pandas). A escolha fica cacheada
+no modulo (uma instancia de backend por processo).
 
-The CSVs are the single source of truth at runtime. The Streamlit cache
-(``@st.cache_data`` on ``app.get_data``) is invalidated by the submit
-handlers via ``st.cache_data.clear()`` after each ``append_row`` /
-``update_row`` call, so a subsequent render re-reads the CSVs.
+Public API (identica em ambos os backends):
+* :func:`load_all`            — le as 11 tabelas
+* :func:`load_table`          — le uma tabela
+* :func:`append_row`          — insere uma linha
+* :func:`update_row`          — atualiza uma linha
+* :func:`next_id`             — deriva o proximo id ``{prefix}_NNN``
+* :func:`csv_dir`             — path do CSV (csv mode) ou sentinel
+                                ``postgres-neon`` (postgres mode)
+* :func:`data_dir`            — alias inverso de ``csv_dir``; disponivel
+                                para callers que pensam em "data dir"
+                                (a conotacao postgres) em vez de "csv dir"
+* :func:`reset_backend_cache` — limpa o cache (uso de testes)
+
+Transitive imports:
+  - :mod:`os` (stdlib) e :mod:`typing` (stdlib) sao os unicos imports
+    de top-level. Os backends sao importados lazy dentro de
+    :func:`_select_backend`. Consequencia: ``import src.data_layer``
+    funciona sem qualquer dependencia externa instalada.
 """
 from __future__ import annotations
 
-from .csv_backend import (
-    append_row,
-    csv_dir,
-    load_all,
-    load_table,
-    next_id,
-    update_row,
-)
+import os
+from typing import Any
 
-__all__ = ["append_row", "csv_dir", "load_all", "load_table", "next_id", "update_row"]
+# Cache de backend por processo. Streamlit roda um processo por sessao
+# (em PRD) ou um unico processo (em dev local); em ambos os casos,
+# cachear o backend apos a primeira resolucao evita o custo do import
+# lazy a cada chamada. ``reset_backend_cache`` e' exposto para testes
+# que precisam alternar entre backends no mesmo processo.
+_BACKEND_CACHE: dict[str, Any] = {}
+
+
+def _select_backend() -> Any:
+    """Resolve o backend ativo lendo ``DCLINIQUE_BACKEND``.
+
+    Default: ``"postgres"`` (Neon em PRD). ``"csv"`` e' fallback
+    explicito para dev sem internet e reproducao de bugs a partir
+    de fixtures CSV. Qualquer outro valor levanta :class:`ValueError`
+    com mensagem acionavel.
+    """
+    name = os.environ.get("DCLINIQUE_BACKEND", "postgres")
+    if name == "postgres":
+        from src.data_layer import postgres_backend as b
+        return b
+    if name == "csv":
+        from src.data_layer import csv_backend as b
+        return b
+    raise ValueError(
+        f"DCLINIQUE_BACKEND invalido: {name!r}. "
+        f"Use 'postgres' (default) ou 'csv'."
+    )
+
+
+def _get_backend() -> Any:
+    """Retorna o backend ativo. Cacheia apos a primeira resolucao."""
+    if "mod" not in _BACKEND_CACHE:
+        _BACKEND_CACHE["mod"] = _select_backend()
+    return _BACKEND_CACHE["mod"]
+
+
+def reset_backend_cache() -> None:
+    """Limpa o cache do backend. Apenas para testes."""
+    _BACKEND_CACHE.clear()
+
+
+# ---------------------------------------------------------------------------
+# Public API — wrappers que delegam ao backend ativo
+# ---------------------------------------------------------------------------
+
+
+def load_all(*args, **kwargs):
+    return _get_backend().load_all(*args, **kwargs)
+
+
+def load_table(*args, **kwargs):
+    return _get_backend().load_table(*args, **kwargs)
+
+
+def append_row(*args, **kwargs):
+    return _get_backend().append_row(*args, **kwargs)
+
+
+def update_row(*args, **kwargs):
+    return _get_backend().update_row(*args, **kwargs)
+
+
+def next_id(*args, **kwargs):
+    return _get_backend().next_id(*args, **kwargs)
+
+
+def csv_dir(*args, **kwargs):
+    """Path do CSV (csv mode) ou sentinel ``postgres-neon`` (postgres mode).
+
+    Mantido o nome ``csv_dir`` para compatibilidade com callers
+    existentes (e.g. ``tests/test_ficha_unit.py:67``). Internamente
+    roteia para ``backend.csv_dir`` (csv) ou ``backend.data_dir``
+    (postgres).
+    """
+    b = _get_backend()
+    if hasattr(b, "csv_dir"):
+        return b.csv_dir(*args, **kwargs)
+    return b.data_dir(*args, **kwargs)
+
+
+def data_dir(*args, **kwargs):
+    """Sentinel ``postgres-neon`` (postgres mode) ou path do CSV (csv mode).
+
+    Alias inverso de :func:`csv_dir`; ambos funcionam. A escolha entre
+    um ou outro e' estetica — :func:`csv_dir` para callers que pensam
+    em "csv", :func:`data_dir` para callers que pensam em "data".
+    """
+    b = _get_backend()
+    if hasattr(b, "data_dir"):
+        return b.data_dir(*args, **kwargs)
+    return b.csv_dir(*args, **kwargs)
+
+
+__all__ = [
+    "load_all",
+    "load_table",
+    "append_row",
+    "update_row",
+    "next_id",
+    "csv_dir",
+    "data_dir",
+    "reset_backend_cache",
+]

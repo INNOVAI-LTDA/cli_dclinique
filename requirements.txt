@@ -3,3 +3,9 @@ pandas>=3.0.3,<4
 plotly>=6.7.0,<7
 openpyxl>=3.1.5,<4
 python-dotenv>=1.0,<2
+
+# Postgres (Neon) data layer
+# psycopg[binary] is the modern psycopg 3 driver with prebuilt wheels
+# (no libpq build needed). Used by src.data_layer.postgres_backend
+# (lazy import inside the connection layer to keep Streamlit cold start flat).
+psycopg[binary]>=3.2,<4

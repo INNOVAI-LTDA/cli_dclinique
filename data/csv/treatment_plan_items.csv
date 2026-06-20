@@ -1,18 +1,1 @@
 plan_item_id,plan_id,patient_id,budget_code,raw_name,category,sessions_expected,frequency_text,frequency_type,source,needs_manual_review
-item_001,plan_001,pat_001,orc_001,Injetáveis EV - Plano,EV,8,8 sessões - semanal,Semanal,PDF,False
-item_002,plan_001,pat_001,orc_001,Acompanhamento nutricional,Acompanhamento profissional,4,4 sessões - quinzenal,Quinzenal,Dados manuais,False
-item_003,plan_002,pat_002,orc_002,Injetáveis EV - Plano,EV,4,4 sessões - semanal,Semanal,PDF,False
-item_004,plan_002,pat_002,orc_002,Acompanhamento nutricional,Acompanhamento profissional,4,4 sessões - quinzenal,Quinzenal,Dados manuais,False
-item_005,plan_003,pat_003,orc_003,Injetáveis EV - Plano,EV,6,6 sessões - semanal,Semanal,PDF,False
-item_006,plan_003,pat_003,orc_003,Acompanhamento nutricional,Acompanhamento profissional,4,4 sessões - quinzenal,Quinzenal,Dados manuais,False
-item_007,plan_003,pat_003,orc_003,Medicamento manipulado,Medicamento manipulado,1,1 sessões - diário,Diário,PDF,True
-item_008,plan_004,pat_004,orc_004,Injetáveis EV - Plano,EV,8,8 sessões - semanal,Semanal,PDF,False
-item_009,plan_004,pat_004,orc_004,Acompanhamento nutricional,Acompanhamento profissional,4,4 sessões - quinzenal,Quinzenal,Dados manuais,False
-item_010,plan_005,pat_005,orc_005,Injetáveis EV - Plano,EV,6,6 sessões - semanal,Semanal,PDF,False
-item_011,plan_005,pat_005,orc_005,Acompanhamento nutricional,Acompanhamento profissional,4,4 sessões - quinzenal,Quinzenal,Dados manuais,False
-item_012,plan_006,pat_006,orc_006,Injetáveis EV - Plano,EV,6,6 sessões - semanal,Semanal,PDF,False
-item_013,plan_006,pat_006,orc_006,Acompanhamento nutricional,Acompanhamento profissional,4,4 sessões - quinzenal,Quinzenal,Dados manuais,False
-item_014,plan_007,pat_007,orc_007,Injetáveis EV - Plano,EV,4,4 sessões - semanal,Semanal,PDF,False
-item_015,plan_007,pat_007,orc_007,Acompanhamento nutricional,Acompanhamento profissional,4,4 sessões - quinzenal,Quinzenal,Dados manuais,False
-item_016,plan_008,pat_008,orc_008,Injetáveis EV - Plano,EV,4,4 sessões - semanal,Semanal,PDF,False
-item_017,plan_008,pat_008,orc_008,Acompanhamento nutricional,Acompanhamento profissional,4,4 sessões - quinzenal,Quinzenal,Dados manuais,False

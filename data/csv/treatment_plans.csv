@@ -1,9 +1,1 @@
 plan_id,patient_id,budget_code,issue_date,start_date,end_date,status,main_goal,is_renewal,notes
-plan_001,pat_001,orc_001,2026-04-22,2026-04-25,2026-07-20,Ativo,Emagrecimento,False,"Dados fictícios para validar fluxo, contrato e layout."
-plan_002,pat_002,orc_002,2026-04-23,2026-04-26,2026-07-25,Ativo,Início de protocolo,False,"Dados fictícios para validar fluxo, contrato e layout."
-plan_003,pat_003,orc_003,2026-04-24,2026-04-27,2026-07-15,Ativo,Manipulado pendente,False,"Dados fictícios para validar fluxo, contrato e layout."
-plan_004,pat_004,orc_004,2026-04-25,2026-04-28,2026-07-10,Pausado,Emagrecimento,False,"Dados fictícios para validar fluxo, contrato e layout."
-plan_005,pat_005,orc_005,2026-04-26,2026-04-29,2026-07-30,Ativo,Controle metabólico,False,"Dados fictícios para validar fluxo, contrato e layout."
-plan_006,pat_006,orc_006,2026-04-27,2026-04-30,2026-08-04,Ativo,Acompanhamento nutricional,False,"Dados fictícios para validar fluxo, contrato e layout."
-plan_007,pat_007,orc_007,2026-04-28,2026-05-01,2026-06-14,Ativo,Renovação de plano,True,"Dados fictícios para validar fluxo, contrato e layout."
-plan_008,pat_008,orc_008,2026-04-29,2026-05-02,2026-07-01,Ativo,Revisão de peso,True,"Dados fictícios para validar fluxo, contrato e layout."
