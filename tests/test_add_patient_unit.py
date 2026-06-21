@@ -25,7 +25,7 @@ from src.data_layer import load_table, next_id
 
 
 def test_next_patient_id_starts_at_001_when_no_extras(csv_dir):
-    # The seed CSVs have pat_001..pat_008 but no pat_new_* yet
+    # Base zerada (T9): CSV vazio, sem pat_new_* ainda
     assert next_id("patients") == "pat_new_001"
 
 
@@ -60,10 +60,15 @@ def test_next_patient_id_is_deterministic(csv_dir):
 # ---------------------------------------------------------------------------
 
 
-def test_existing_normalized_names_includes_seed_patients(csv_dir):
+def test_existing_normalized_names_starts_empty(csv_dir):
+    """Base zerada (T9): nenhum paciente seed.
+
+    Os CSVs sao schema reference only; pacientes reais so' aparecem via
+    ``append_row`` (import de PDF, cadastro manual). Este test verifica
+    que a funcao reflete o estado vazio inicial.
+    """
     keys = _existing_normalized_names()
-    assert "kelly cristina amorim" in keys
-    assert "ana maria souza" in keys
+    assert keys == set()
 
 
 def test_existing_normalized_names_reflects_appends(csv_dir):
@@ -96,15 +101,37 @@ def test_handle_submit_rejects_empty_name(fake_session_state, csv_dir):
     result = _handle_submit()
     assert result is False
     # No new row in the CSV
-    assert len(load_table("patients")) == 8  # seed only
+    assert len(load_table("patients")) == 0  # base zerada
 
 
 def test_handle_submit_rejects_duplicate_name(fake_session_state, csv_dir):
-    fake_session_state["add_patient_name"] = "Kelly Cristina Amorim"  # already in seed
+    """Base zerada (T9): a pre-existencia e' construida no proprio teste.
+
+    Antes do T9, este test dependia de um paciente do seed (o que nao
+    existe mais). Agora a pre-existencia e' adicionada via ``append_row``
+    no setup, e o submit handler tenta adicionar o mesmo nome.
+    """
+    from src.data_layer import append_row
+
+    # Pre-existente: Maria Duplicada ja' foi cadastrada
+    append_row(
+        "patients",
+        {
+            "patient_id": "pat_new_001",
+            "name": "Maria Duplicada",
+            "normalized_name": "maria duplicada",
+            "medical_record": None,
+            "phone": None,
+            "age": 30,
+            "created_at": pd.Timestamp.today().normalize(),
+        },
+    )
+    # Tenta adicionar de novo (mesmo nome normalizado) -> rejeitado
+    fake_session_state["add_patient_name"] = "Maria Duplicada"
     fake_session_state["add_patient_age"] = 30
     result = _handle_submit()
     assert result is False
-    assert len(load_table("patients")) == 8
+    assert len(load_table("patients")) == 1  # so' a pre-existente
 
 
 def test_handle_submit_appends_valid_patient(fake_session_state, csv_dir):
@@ -117,7 +144,7 @@ def test_handle_submit_appends_valid_patient(fake_session_state, csv_dir):
 
     assert result is True
     df = load_table("patients")
-    assert len(df) == 9  # 8 seed + 1 new
+    assert len(df) == 1  # 0 seed + 1 new
     new_row = df.iloc[-1]
     assert new_row["patient_id"] == "pat_new_001"
     assert new_row["name"] == "Maria Nova"
@@ -149,7 +176,7 @@ def test_handle_submit_keeps_form_open_on_rejection(fake_session_state, csv_dir)
     _handle_submit()
 
     assert fake_session_state["add_patient_open"] is True
-    assert len(load_table("patients")) == 8
+    assert len(load_table("patients")) == 0
 
 
 def test_handle_submit_uses_next_id_avoiding_existing(fake_session_state, csv_dir):
@@ -173,5 +200,5 @@ def test_handle_submit_uses_next_id_avoiding_existing(fake_session_state, csv_di
     _handle_submit()
 
     df = load_table("patients")
-    assert len(df) == 10  # 8 + 1 pre-existing + 1 new
+    assert len(df) == 2  # 0 + 1 pre-existing + 1 new
     assert df.iloc[-1]["patient_id"] == "pat_new_002"

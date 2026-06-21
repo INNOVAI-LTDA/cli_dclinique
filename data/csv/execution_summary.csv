@@ -1,18 +1,1 @@
-execution_id,patient_id,plan_id,budget_code,procedure_raw,procedure_category,status,sessions_expected,sessions_completed,sessions_remaining,plan_created_at
-exec_001,pat_001,plan_001,orc_001,Injetáveis EV - Plano,EV,Finalizado,8,8,0,2026-04-22
-exec_002,pat_001,plan_001,orc_001,Acompanhamento nutricional,Acompanhamento profissional,Em tratamento,4,2,2,2026-04-22
-exec_003,pat_002,plan_002,orc_002,Injetáveis EV - Plano,EV,Não iniciado,4,0,4,2026-04-23
-exec_004,pat_002,plan_002,orc_002,Acompanhamento nutricional,Acompanhamento profissional,Não iniciado,4,0,4,2026-04-23
-exec_005,pat_003,plan_003,orc_003,Injetáveis EV - Plano,EV,Em tratamento,6,5,1,2026-04-24
-exec_006,pat_003,plan_003,orc_003,Acompanhamento nutricional,Acompanhamento profissional,Aguardando,4,0,4,2026-04-24
-exec_007,pat_003,plan_003,orc_003,Medicamento manipulado,Medicamento manipulado,Aguardando,1,0,1,2026-04-24
-exec_008,pat_004,plan_004,orc_004,Injetáveis EV - Plano,EV,Em tratamento,8,2,6,2026-04-25
-exec_009,pat_004,plan_004,orc_004,Acompanhamento nutricional,Acompanhamento profissional,Aguardando,4,0,4,2026-04-25
-exec_010,pat_005,plan_005,orc_005,Injetáveis EV - Plano,EV,Finalizado,6,6,0,2026-04-26
-exec_011,pat_005,plan_005,orc_005,Acompanhamento nutricional,Acompanhamento profissional,Em tratamento,4,2,2,2026-04-26
-exec_012,pat_006,plan_006,orc_006,Injetáveis EV - Plano,EV,Em tratamento,6,2,4,2026-04-27
-exec_013,pat_006,plan_006,orc_006,Acompanhamento nutricional,Acompanhamento profissional,Aguardando,4,0,4,2026-04-27
-exec_014,pat_007,plan_007,orc_007,Injetáveis EV - Plano,EV,Finalizado,4,4,0,2026-04-28
-exec_015,pat_007,plan_007,orc_007,Acompanhamento nutricional,Acompanhamento profissional,Em tratamento,4,2,2,2026-04-28
-exec_016,pat_008,plan_008,orc_008,Injetáveis EV - Plano,EV,Em tratamento,4,3,1,2026-04-29
-exec_017,pat_008,plan_008,orc_008,Acompanhamento nutricional,Acompanhamento profissional,Aguardando,4,0,4,2026-04-29
+execution_id,patient_id,plan_id,budget_code,procedure_raw,procedure_category,status,sessions_expected,sessions_completed,sessions_remaining,plan_created_at,frequency_type

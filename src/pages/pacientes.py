@@ -8,11 +8,11 @@ from urllib.parse import quote
 import pandas as pd
 import streamlit as st
 
-from src.components.add_patient import (
-    render_add_patient_form,
-    render_add_patient_toggle,
-)
+from src.components.acoes_paciente import render_acoes_popover
+from src.components.add_patient import render_add_patient_form
 from src.components.ficha import patient_has_ficha
+from src.components.formatting import display_dash
+from src.components.importar_pdf_wizard import render_importar_pdf_wizard
 from src.metrics import patient_summary
 
 
@@ -275,7 +275,7 @@ def _reset_filters() -> None:
 def _format_date(value: object) -> str:
     date = pd.to_datetime(value, errors="coerce")
     if pd.isna(date):
-        return "--"
+        return display_dash(value)
     return date.strftime("%d/%m/%Y")
 
 
@@ -312,7 +312,7 @@ _frequency_by_patient_cached = st.cache_data(show_spinner=False)(_frequency_by_p
 
 def _prepare_patient_rows(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
     summary = patient_summary(data)
-    summary["frequency_expected"] = summary["patient_id"].map(_frequency_by_patient_cached(data)).fillna("--")
+    summary["frequency_expected"] = summary["patient_id"].map(_frequency_by_patient_cached(data)).fillna(display_dash(None))
     return summary.sort_values("name", kind="stable").reset_index(drop=True)
 
 
@@ -364,19 +364,21 @@ def _render_filters(summary: pd.DataFrame) -> None:
     # filters rendered above; table is rendered by `_render_table`
 
 
-def _render_add_patient_row(data: dict[str, pd.DataFrame]) -> None:
-    """Render the add-patient toggle (right-aligned) and, if open, the form.
+def _render_acoes_row(data: dict[str, pd.DataFrame]) -> None:
+    """Render the Ações popover (right-aligned) and whichever flow is open.
 
-    The toggle button is right-aligned to mirror the "Limpar filtros"
-    column. When the form is open, it renders full-width on its own row
-    below the toggle — that way the form fields are not squashed into a
-    narrow side column.
+    The popover lives in a narrow right-aligned column (mirroring the
+    "Limpar filtros" column). The form / wizard it triggers renders
+    full-width below the columns so its fields aren't squashed into a
+    side column.
     """
     _button_cols = st.columns([5.4, 0.9])
     with _button_cols[1]:
-        render_add_patient_toggle()
+        render_acoes_popover()
     if st.session_state.get("add_patient_open", False):
         render_add_patient_form(data)
+    if st.session_state.get("import_pdf_open", False):
+        render_importar_pdf_wizard()
 
 
 def _render_table(df: pd.DataFrame, data: dict[str, pd.DataFrame]) -> None:
@@ -430,9 +432,9 @@ def _render_table(df: pd.DataFrame, data: dict[str, pd.DataFrame]) -> None:
             f'<div class="c-cell"><span class="patients-badge {_status_class(status)}">{html.escape(status)}</span></div>'
             f'<div class="c-cell">{_format_date(row.get("start_date"))}</div>'
             f'<div class="c-cell">{_format_date(row.get("end_date"))}</div>'
-            f'<div class="c-cell">{html.escape(str(row.get("frequency_expected", "--")))}</div>'
+            f'<div class="c-cell">{html.escape(display_dash(row.get("frequency_expected")))}</div>'
             f'<div class="c-cell"><span class="patients-badge {_engagement_class(engagement)}">{html.escape(engagement)}</span></div>'
-            f'<div class="c-cell">{_format_date(row.get("end_date")) if bool(row.get("is_renewal", False)) else "--"}</div>'
+            f'<div class="c-cell">{_format_date(row.get("end_date")) if bool(row.get("is_renewal", False)) else display_dash(None)}</div>'
             "</div>"
         )
 
@@ -489,15 +491,15 @@ def render(data):
     st.markdown(_patients_css(), unsafe_allow_html=True)
     st.markdown('<h1 class="patients-page-title">Pacientes</h1>', unsafe_allow_html=True)
 
-    # Render the add-patient form first: the form's submit handler
-    # (``_handle_submit``) runs while Streamlit is evaluating the form
-    # widget. A successful submit appends the new row to
-    # ``patients.csv``, clears the ``@st.cache_data`` for ``get_data``,
-    # and sets the ``_data_dirty`` flag in the same render. The block
-    # below re-reads the CSVs so the table below sees the freshly
-    # registered patient without an extra ``st.rerun()`` (which would
-    # interact poorly with the form's ``clear_on_submit=True``).
-    _render_add_patient_row(data)
+    # Render the Ações popover + whichever form / wizard the user picked
+    # first. The submit handlers (both add-patient and PDF import) run
+    # while Streamlit is evaluating the widgets. A successful submit
+    # appends the new row(s) to the CSVs, clears the ``@st.cache_data``
+    # for ``get_data``, and sets the ``_data_dirty`` flag in the same
+    # render. The block below re-reads the CSVs so the table sees the
+    # freshly registered patients without an extra ``st.rerun()`` (which
+    # would interact poorly with the form's ``clear_on_submit=True``).
+    _render_acoes_row(data)
     if st.session_state.pop("_data_dirty", False):
         from src.data_layer import load_all
         data = load_all()

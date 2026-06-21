@@ -13,6 +13,7 @@ Esta entrega usa somente dados fictícios em memória, modelados como se viessem
 - Pandas
 - Plotly
 - OpenPyXL
+- psycopg 3 (apenas no backend Postgres — `psycopg[binary]>=3.2,<4`)
 
 ## Como rodar localmente
 
@@ -27,7 +28,7 @@ Observação: em alguns ambientes Windows, o comando `streamlit` pode não estar
 
 ## Deploy
 
-A publicação no Streamlit Community Cloud ainda não foi feita. Quando for a hora, o guia completo está em [`DEPLOY.md`](DEPLOY.md) — inclui gate de LGPD, setup, configuração de secrets, modelo de acesso privado por lista de emails e plano de rollback.
+A publicação no Streamlit Community Cloud ainda não foi feita. Quando for a hora, o guia completo está em [`DEPLOY.md`](DEPLOY.md) — inclui gate de LGPD, setup, configuração de secrets, modelo de acesso privado por lista de emails e plano de rollback. Para o passo-a-passo operacional de provisionar e configurar o Neon Postgres, ver [`NEON_SETUP.md`](NEON_SETUP.md).
 
 ## Estrutura
 
@@ -42,8 +43,10 @@ DEPLOY.md
   secrets.toml.example
 scripts/
   scan_pii.py
+  init_neon_schema.py # bootstrap one-shot do schema no Neon
+  make_synthetic_pdf.py # gera PDF PII-clean para primeiro teste de import
 src/
-  data_layer/        # backend CSV: load_all, append_row, update_row, next_id
+  data_layer/        # router + 2 backends (csv_backend + postgres_backend)
   mock_data.py       # fábrica de seed usada por scripts/seed_csvs.py
   metrics.py
   quality.py
@@ -53,8 +56,10 @@ src/
   components/
   charts/
 data/
-  csv/               # 11 tabelas do contrato (fonte de verdade em runtime)
+  csv/               # 11 tabelas do contrato (header only em runtime; schema reference)
   images/            # capturas de referência e Croquis_SAD_DClinique.png
+NEON_SETUP.md        # runbook de provisionamento e config do Neon
+SLA_REPORT.md        # benchmarks de cold start e impacto da migração Postgres
 ```
 
 ## Páginas disponíveis
@@ -69,7 +74,8 @@ data/
 
 ## Contrato de dados
 
-`src.data_layer.load_all() -> dict[str, pandas.DataFrame]` lê os 11 CSVs em `data/csv/` e devolve o mesmo shape do antigo `load_mock_data()`. Tabelas:
+`src.data_layer.load_all() -> dict[str, pandas.DataFrame]` devolve o
+mesmo shape do antigo `load_mock_data()`. Tabelas:
 
 - `patients`
 - `treatment_plans`
@@ -83,7 +89,25 @@ data/
 - `alerts`
 - `data_quality_issues`
 
-Os CSVs são regenerados via `scripts/seed_csvs.py` (uma vez por mudança de schema, não em runtime) e **committados no repo** para que um checkout novo tenha dados.
+**Backend em runtime:** o `src/data_layer/__init__.py` decide o
+backend via env var ``DCLINIQUE_BACKEND``:
+
+- ``postgres`` (default) — `postgres_backend.py` conecta no Neon
+  Serverless Postgres (DSN em `st.secrets["postgres"]["dsn"]` ou
+  env var ``NEON_DSN``). Ativo em PRD.
+- ``csv`` (fallback) — `csv_backend.py` lê os 11 CSVs em
+  `data/csv/`. Útil para dev local sem internet e para reproduzir
+  bugs sem subir Postgres.
+
+Em ambos os casos a API pública (`load_all`, `load_table`,
+`append_row`, `update_row`, `next_id`) é **idêntica** — o resto do
+código (`app.py`, `src/components/`, `src/pages/`) não sabe qual
+backend está ativo.
+
+Os CSVs em `data/csv/` hoje têm **header only** (zero linhas); são
+schema reference compartilhada entre dev local e PRD. ``seed_csvs.py``
+ainda existe no repo caso seja necessário repopular (não roda em
+runtime).
 
 ## Revisão automática de aceite
 
@@ -96,5 +120,5 @@ A navegação usa `st.session_state["page"]` e `st.session_state["selected_patie
 ## Escopo desta casca
 
 - Foco em fluxo navegavel, legibilidade visual e contrato de dados mockado.
-- Sem persistência em banco, sem autenticação e sem integrações externas.
+- Persistência em runtime: Neon Postgres (PRD) ou CSVs locais (dev fallback). Sem autenticação e sem integrações externas.
 - Mudanças devem preservar nomes de campos e tabelas retornados por `load_all()`.

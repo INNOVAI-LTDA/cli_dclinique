@@ -109,7 +109,50 @@ criar 56 containers Streamlit é caro.
 
 ---
 
-## 6. Como reproduzir
+## 6. Cold start adicional do Neon (Postgres backend)
+
+Quando o app roda em PRD com ``DCLINIQUE_BACKEND=postgres`` (Neon
+Serverless Postgres), o compute do Neon escala a zero apos
+~5 min de inatividade. O primeiro request apos esse intervalo paga
+um wakeup:
+
+| Etapa | Latencia adicional esperada |
+|---|---:|
+| Wakeup do compute Neon | ~300-500 ms |
+| SSL handshake | ~50-100 ms |
+| Query inicial (init_schema cacheado) | ~50-100 ms |
+| **Total adicional** | **~500 ms** |
+
+Esse overhead e' **recorrente** (acontece em cada pausa longa) e se
+soma ao cold start do framework Streamlit (2,5 s, ver §5). Apos o
+primeiro request, o compute fica "quente" por ~5 min; chamadas
+subsequentes voltam a pagar apenas a latencia normal de query
+Postgres (~10-30 ms no mesmo region).
+
+**Mitigacao se virar problema:**
+
+- Upgrade do plano Neon para um tier sem auto-suspend (Launch tier
+  ~$20/mes) — o compute fica 24/7 online.
+- Workaround barato: um ping externo a cada 4 min para manter o
+  compute quente (ex.: GitHub Actions cron). Adiciona dependencia
+  operacional.
+- Cachear `load_all()` no app: ja' feito via `@st.cache_data` em
+  `app.py:get_data()`. O primeiro request paga tudo; o segundo em
+  diante e' instantaneo ate' o cache expirar.
+
+**Status:** nao medido em producao ainda (release inicial). Medir
+e atualizar este secao com dados reais apos o primeiro deploy em
+PRD.
+
+**Testes de integracao:** o fixture ``db_branch`` em
+``tests/conftest.py`` usa o auto-suspend como vantagem — o branch
+efemero e' criado via API Neon, roda a suite, e e' deletado no
+teardown. Custo de compute: 0 no free tier (o branch vive apenas
+durante a sessao de teste).
+
+---
+
+## 7. Como reproduzir
 
 ```bash
 cd .claude/worktrees/benchmark-sla
@@ -121,7 +164,7 @@ Logs: `benchmark_streamlit_cold.log`, `benchmark_streamlit_http.log`.
 
 ---
 
-## 7. Arquivos gerados / modificados
+## 8. Arquivos gerados / modificados
 
 - `benchmark_sla.py` — script de medição (4 camadas)
 - `benchmark_sla_results.json` — dados brutos da última execução
@@ -133,3 +176,37 @@ Logs: `benchmark_streamlit_cold.log`, `benchmark_streamlit_http.log`.
   `src/pages/mapa_decisao.py`, `src/pages/pacientes.py`,
   `src/pages/qualidade_dados.py`, `src/charts/weight_chart.py` —
   otimizações aplicadas
+
+---
+
+## 9. Migração para Postgres (Neon) — mudanças de arquitetura
+
+Esta seção documenta o impacto do T1-T15 (PRD cleanup) no SLA.
+
+**Antes (CSV):** cold start dominado por `import streamlit` + `import
+pandas` em `app.py:get_data()`. ``load_all()`` lia 11 CSVs do
+filesystem (≈30-50 ms). Sem custo de round-trip a banco.
+
+**Depois (Postgres):** cold start inalterado (Streamlit + framework
+continuam os mesmos). ``load_all()`` agora abre uma conexão
+psycopg no primeiro request (cacheada por ``@st.cache_resource``) e
+executa 11 ``SELECT *``. Sob o mesmo region, isso adiciona ~5-15 ms
+por query, ~50-150 ms no total de ``load_all()`` (depende do round-
+trip). Após o auto-suspend do Neon, o primeiro request paga ~500 ms
+adicionais (ver §6).
+
+**Net:** em operação contínua (compute quente), a mudança de
+backend adiciona latência desprezível. Em operação pausada
+(boletim diário, por exemplo), o usuário sente o wakeup. Como o
+``@st.cache_data`` em ``get_data()`` cacheia o ``dict`` inteiro,
+``load_all()`` roda 1× por sessão Streamlit, não 1× por request.
+
+**Recomendações para produção:**
+
+- Manter o compute Neon aquecido se o cliente acessa o app com
+  frequência irregular (workaround: ping externo).
+- Se o free tier (191.9 h/mês) ficar curto, upgrade para Launch
+  tier (~$20/mês) — também remove o auto-suspend.
+- Monitorar: cold start do framework (2,5 s) é o gargalo dominante;
+  otimizações no backend Postgres trarão pouco retorno até o
+  framework ser trocado.

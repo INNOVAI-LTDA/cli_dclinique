@@ -121,11 +121,51 @@ def test_cancelar_after_submit_does_not_lose_the_patient(csv_dir):
 
 
 def test_link_targets_ficha_when_patient_already_has_ficha(csv_dir):
+    """Base zerada (T9): registrar paciente + criar ficha via cadastro form,
+    depois voltar para Pacientes e verificar que o link aponta para Ficha.
+
+    Antes do T9, o test assumia 'todos os pacientes base tem plan no seed'
+    e o markup ja' vinha com os links de Ficha. Agora a pre-existencia e'
+    construida no proprio teste.
+    """
     at = _render_pacientes()
+    pid = _register_patient_via_form(at, name="Com Ficha", age=30)
+
+    # Cadastrar ficha
+    at.query_params["nav"] = "Cadastro de Ficha do Paciente"
+    at.query_params["patient_id"] = pid
+    at.run()
+    at.session_state["cadastro_ficha_objetivo"] = "Emagrecimento"
+    at.session_state["cadastro_ficha_peso_inicial"] = 80.0
+    at.session_state["cadastro_ficha_peso_atual"] = 79.5
+    at.session_state["cadastro_ficha_peso_meta"] = 70.0
+    at.session_state["cadastro_ficha_status"] = "Ativo"
+    at.session_state["cadastro_ficha_resumo"] = "Teste."
+    at.session_state["cadastro_ficha_inicio"] = pd.Timestamp.today().normalize().date()
+    at.session_state["cadastro_ficha_fim"] = (
+        pd.Timestamp.today().normalize() + pd.Timedelta(days=60)
+    ).date()
+    at.run()
+    submit = [b for b in at.button if b.label == "Cadastrar ficha"]
+    assert submit, "Cadastrar ficha button not found"
+    submit[0].click()
+    at.run()
+
+    # Voltar para Pacientes
+    at.query_params["nav"] = "Pacientes"
+    if "patient_id" in at.query_params:
+        del at.query_params["patient_id"]
+    at.run()
+
+    # O link do paciente deve apontar para Ficha (nao para Cadastro)
     markup = _patient_link_markup(at)
-    # All base patients have a plan in the seed → link should point to Ficha
-    assert "Ficha%20do%20Paciente" in markup
-    assert "Cadastro%20de%20Ficha%20do%20Paciente" not in markup
+    for line in markup.split("<a "):
+        if "Com Ficha" in line:
+            assert "Ficha%20do%20Paciente" in line
+            assert "Cadastro%20de%20Ficha%20do%20Paciente" not in line
+            break
+    else:
+        pytest.fail("Link for 'Com Ficha' patient not found in markup")
 
 
 def test_link_targets_cadastro_for_newly_registered_patient(csv_dir):
@@ -205,13 +245,46 @@ def test_patient_persists_after_visiting_other_pages(csv_dir):
 
 
 def test_cadastro_redirects_to_ficha_if_patient_already_has_one(csv_dir):
+    """Base zerada (T9): registrar paciente + criar plan via append_row,
+    depois abrir o cadastro com deep-link e verificar redirect para Ficha.
+
+    Antes do T9, o test usava 'pat_001' (paciente do seed com plan pre-existente).
+    Agora a pre-existencia do plan e' construida no proprio teste.
+    """
+    from src.data_layer import append_row, next_id
+
+    # Setup: registrar paciente
+    at_setup = _render_pacientes()
+    pid = _register_patient_via_form(at_setup, name="Com Plan Pre", age=35)
+
+    # Criar plan pre-existente para esse paciente (simula o que o seed fazia)
+    plan_id = next_id("treatment_plans")
+    append_row(
+        "treatment_plans",
+        {
+            "plan_id": plan_id,
+            "patient_id": pid,
+            "objective": "Emagrecimento",
+            "status": "Ativo",
+            "start_date": pd.Timestamp.today().normalize().date(),
+            "end_date": (
+                pd.Timestamp.today().normalize() + pd.Timedelta(days=60)
+            ).date(),
+            "initial_weight": 80.0,
+            "current_weight": 80.0,
+            "target_weight": 70.0,
+            "summary": "Pre-existente",
+            "created_at": pd.Timestamp.today().normalize(),
+        },
+    )
+
+    # Deep-link para o cadastro: deve redirecionar para Ficha
     at = _render_pacientes()
-    # pat_001 already has a plan in the seed
     at.query_params["nav"] = "Cadastro de Ficha do Paciente"
-    at.query_params["patient_id"] = "pat_001"
+    at.query_params["patient_id"] = pid
     at.run()
     assert at.session_state["page"] == "Ficha do Paciente"
-    assert at.session_state["selected_patient_id"] == "pat_001"
+    assert at.session_state["selected_patient_id"] == pid
 
 
 def test_cadastro_form_submit_navigates_to_ficha_page(csv_dir):
@@ -309,14 +382,23 @@ def test_add_patient_form_rejects_empty_name(csv_dir):
 
 
 def test_add_patient_form_rejects_duplicate_name(csv_dir):
+    """Base zerada (T9): registrar Maria Duplicada, depois tentar adicionar
+    de novo via form. O form deve rejeitar (form continua aberto, nenhuma
+    nova linha pat_new_ criada).
+
+    Antes do T9, o test usava um paciente do seed como nome duplicado.
+    Agora a pre-existencia e' construida via form.
+    """
     at = _render_pacientes()
+    _register_patient_via_form(at, name="Maria Duplicada", age=30)
     _open_add_form(at)
-    at.session_state["add_patient_name"] = "Kelly Cristina Amorim"  # already in seed
+    at.session_state["add_patient_name"] = "Maria Duplicada"
     at.session_state["add_patient_age"] = 30
     at.run()
     _submit_add_form(at)
     new_rows = load_table("patients")
-    assert len(new_rows[new_rows["patient_id"].str.startswith("pat_new_")]) == 0
+    # 1 pat_new_001 (do setup) + 0 novo (rejeitado) = 1 total
+    assert len(new_rows[new_rows["patient_id"].str.startswith("pat_new_")]) == 1
     assert at.session_state["add_patient_open"] is True
 
 

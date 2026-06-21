@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Projecto
 
-**MAP** (Minimum Acceptable Product) — casca navegável Streamlit para acompanhamento de pacientes em planos de tratamento. Dados fictícios em CSVs versionados em `data/csv/`, modelados como se viessem do banco futuro. Não há parser real de PDF/Excel, Supabase, login, deploy, WhatsApp ou Google Drive.
+**MAP** (Minimum Acceptable Product) — casca navegável Streamlit para acompanhamento de pacientes em planos de tratamento. A fonte de verdade em PRD é **Postgres no Neon** (feature aprovada pelo Cliente — `src/data_layer/postgres_backend.py`, `scripts/init_neon_schema.py`, `scripts/validate_neon.py`). CSVs em `data/csv/` viraram schema de referência + fallback `csv` para dev offline (ativo quando `DCLINIQUE_BACKEND=csv`; default é `postgres`). A feature de **importação de pacientes via PDF** (`src/pdf_importer/`, `data/import_zones/default.json`, componente `importar_pdf_wizard`) é parte oficial do app — parser real de PDF é **exigência do Cliente** (não exceção). O **deploy no Streamlit Community Cloud** foi liberado (ver `DEPLOY.md` para o gate de LGPD, setup e modelo de acesso); o gate continua obrigatório antes de qualquer publicação. Continua fora do escopo: Supabase, login próprio, WhatsApp, Google Drive, parser de Excel e outras integrações externas não listadas.
 
 ## Comandos essenciais
 
@@ -27,6 +27,23 @@ python -m streamlit run app.py
 # ou fixture mudar — não roda em runtime, os CSVs são commitados)
 .venv\Scripts\python.exe scripts/seed_csvs.py
 
+# Bootstrap do schema Postgres no Neon (idempotente: CREATE TABLE IF NOT EXISTS
+# para as 11 tabelas em EXPECTED_SCHEMAS). Roda uma vez apos provisionar o
+# projeto Neon; re-rodar e' no-op.
+DCLINIQUE_BACKEND=postgres .venv\Scripts\python.exe scripts/init_neon_schema.py
+
+# Smoke test end-to-end do data layer Neon: conectividade, schema (init_schema),
+# INSERT/UPDATE/DELETE em cada uma das 11 tabelas, e cleanup defensivo por
+# `patient_id LIKE 'pat_test%'`. NAO-destrutivo (try/finally garante cleanup).
+# Requer NEON_DSN (ou DCLINIQUE_DSN / st.secrets["postgres"]["dsn"]) configurado.
+DCLINIQUE_BACKEND=postgres .venv\Scripts\python.exe scripts/validate_neon.py
+
+# Wrapper PowerShell do smoke test: cria .venv se faltar, instala requirements
+# se pandas/psycopg nao estiverem presentes, carrega .env, seta o backend
+# postgres, e roda o validate_neon.py. Idempotente. Parametros: -DsnPath,
+# -VenvDir, -SkipInstall.
+pwsh scripts/run_validate_neon.ps1
+
 # Benchmark de SLA (gera benchmark_sla_results.json e atualiza SLA_REPORT.md)
 # Rodar de dentro de um worktree de benchmark:
 PYTHONPATH=. ../../../.venv/Scripts/python.exe benchmark_sla.py
@@ -44,11 +61,15 @@ Casca navegável fina em Streamlit com sessão-controlada. Stack: Streamlit, Pan
 
 ### Camada de dados (`src/data_layer/`)
 
-A fonte de dados são 11 CSVs versionados em `data/csv/` (um por tabela do contrato). O módulo `src.data_layer` exporta `load_all()`, `load_table()`, `append_row()`, `update_row()` e `next_id()`. `load_all()` lê os 11 CSVs e devolve `dict[str, pd.DataFrame]` com o mesmo shape que o antigo `load_mock_data()`. Os CSVs são regenerados via `scripts/seed_csvs.py` (uma vez por mudança de schema, não em runtime) e **committados no repo** para que um checkout novo tenha dados.
+A fonte de verdade em PRD é **Postgres no Neon** (default: `DCLINIQUE_BACKEND=postgres`). O módulo `src.data_layer` é um router: `__init__.py` lê `DCLINIQUE_BACKEND` e delega para `postgres_backend` (Neon) ou `csv_backend` (fallback dev offline). A API pública é idêntica nos dois backends: `load_all()`, `load_table()`, `append_row()`, `update_row()`, `next_id()`, `csv_dir()` / `data_dir()`. `reset_backend_cache()` está exposto para testes que alternam entre backends.
+
+`postgres_backend.py` espelha `csv_backend.py` 1:1: lê as 11 tabelas via `SELECT *` e devolve `dict[str, pd.DataFrame]` com o mesmo shape. `connection.py` resolve o DSN na ordem `st.secrets["postgres"]["dsn"]` → `NEON_DSN` → `DCLINIQUE_DSN`, com `psycopg` lazy dentro de `get_engine()`. `schema.py` aplica `CREATE TABLE IF NOT EXISTS` em todas as 11 tabelas (idempotente; chamado por `scripts/init_neon_schema.py` no bootstrap e por `scripts/validate_neon.py` no smoke test). `psycopg`, `streamlit` e `pandas` são lazy — `import src.data_layer` não dispara conexão nem importa pacotes pesados.
+
+Em modo `csv` (fallback dev), os 11 CSVs em `data/csv/` (header only após T9) servem como schema de referência e fonte de dados local. `seed_csvs.py` ainda funciona para repopular via `src.mock_data.load_mock_data()`. `psycopg` não precisa estar instalado no venv de quem usa só o modo `csv`.
 
 Mutações (`add_patient.py:_handle_submit`, `ficha.py:_handle_submit`) chamam `append_row(...)` (e `update_row(...)` para atualizar idade do paciente no cadastro da ficha), em seguida `st.cache_data.clear()` e setam `st.session_state["_data_dirty"] = True`. As páginas que precisam ver a mudança no mesmo render checam o flag e re-chamam `load_all()` para bypassar o cache invalidado — sem `st.rerun()` (que interagiria mal com `clear_on_submit=True`).
 
-`_next_patient_id` (e `_next_plan_id`/etc.) foram removidos: o id é derivado do CSV no momento do append via `next_id(table)`, que escaneia a coluna primária da tabela e devolve o próximo `pat_new_NNN` / `plan_new_NNN` / `item_new_NNN` / `goal_new_NNN` / `w_new_NNN` disponível.
+`_next_patient_id` (e `_next_plan_id`/etc.) foram removidos: o id é derivado no momento do append via `next_id(table)`, que escaneia a coluna primária da tabela e devolve o próximo `pat_new_NNN` / `plan_new_NNN` / `item_new_NNN` / `goal_new_NNN` / `w_new_NNN` disponível.
 
 ### Estado de navegação (`src/navigation.py`)
 
@@ -61,7 +82,7 @@ A sidebar (`src/components/sidebar.py`) também aceita deep-link via query param
 
 ### Camadas
 
-- **`src/data_layer/`** — backend CSV: `csv_backend.py` com `load_all`, `load_table`, `append_row`, `update_row`, `next_id`, `csv_dir`. `__init__.py` reexporta o público. A coluna primária é sempre a primeira de `EXPECTED_SCHEMAS`; o tipo (`Timestamp`/`bool`/`Int64`) é restaurado em `load_table` via mapas `_DATE_COLUMNS` / `_BOOL_COLUMNS` / `_NULLABLE_INT_COLUMNS`. O caminho do diretório CSV é resolvido por `_csv_dir_callable` (default: `data/csv/` ao lado do projeto) para que os testes façam `monkeypatch` por teste.
+- **`src/data_layer/`** — router Postgres/CSV: `__init__.py` delega para o backend ativo conforme `DCLINIQUE_BACKEND` (default `postgres`). `postgres_backend.py` (Neon) e `csv_backend.py` (fallback dev) expõem a mesma API (`load_all`, `load_table`, `append_row`, `update_row`, `next_id`, `csv_dir`/`data_dir`). `connection.py` resolve o DSN e cacheia o `psycopg.Connection` por processo. `schema.py` mapeia colunas para tipos Postgres (`TIMESTAMP`/`BOOLEAN`/`INTEGER`/`DOUBLE PRECISION`/`TEXT`) e aplica `CREATE TABLE IF NOT EXISTS` em todas as 11 tabelas. A coluna primária é sempre a primeira de `EXPECTED_SCHEMAS`; o tipo é restaurado em `load_table` via mapas `_DATE_COLUMNS` / `_BOOL_COLUMNS` / `_NULLABLE_INT_COLUMNS` (csv) ou `_postgres_type` (postgres). O caminho do diretório CSV é resolvido por `_csv_dir_callable` (default: `data/csv/`) para que os testes façam `monkeypatch` por teste.
 - **`src/mock_data.py`** — `load_mock_data()` continua existindo como fábrica de seed para `scripts/seed_csvs.py`. Não é mais chamado em runtime — `get_data()` em `app.py` agora chama `load_all()`.
 - **`src/schemas.py`** — `EXPECTED_SCHEMAS` declara as colunas esperadas de cada tabela; `validate_mock_schema(data)` é o que a página Qualidade dos Dados usa.
 - **`src/metrics.py`** — derivam `patient_summary` (engajamento, último status, último peso, `days_to_renewal`, `without_recent_weight`, etc.), `overview_kpis`, `attention_patients`. Cálculos vetorizados (NumPy `errstate`, `pd.cut`, `np.select`); funções decoradas com `@st.cache_data`.
@@ -78,7 +99,7 @@ A sidebar (`src/components/sidebar.py`) também aceita deep-link via query param
 
 As restrições abaixo aparecem em todos os `.github/agents/*.agent.md` e `.github/prompts/*.prompt.md` e devem ser respeitadas em qualquer mudança:
 
-- **Não** implementar parser real de PDF/Excel, Supabase, login, deploy, WhatsApp, Google Drive ou outras integrações externas.
+- **Não** implementar Supabase, login próprio, WhatsApp, Google Drive, parser de Excel, ou outras integrações externas. As exceções aprovadas pelo Cliente são: **parser de PDF** (`src/pdf_importer/`, exigência do Cliente), **Postgres no Neon** como data layer em PRD (`src/data_layer/postgres_backend.py`, `scripts/init_neon_schema.py`) e **deploy no Streamlit Community Cloud** (ver `DEPLOY.md` para o gate de LGPD, obrigatório antes de qualquer publicação). Qualquer outra integração nova exige alinhamento antes.
 - **Não** expandir escopo funcional sem alinhamento — o projeto é uma casca navegável, não o produto final.
 - **Preservar** nomes de campos e o contrato de `load_all()` (ver `src/schemas.py`).
 - **Não** aceitar pendências em validação sem registrar impacto.
