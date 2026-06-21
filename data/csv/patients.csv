@@ -1,9 +1,1 @@
 patient_id,name,normalized_name,medical_record,phone,age,created_at
-pat_001,Kelly Cristina Amorim,kelly cristina amorim,7714697.0,(62) 99999-0001,38,2026-03-17
-pat_002,Jaqueline Aparecida Vilela,jaqueline aparecida vilela,7714698.0,(62) 99999-0002,44,2026-03-27
-pat_003,Ana Maria Souza,ana maria souza,7714699.0,(62) 99999-0003,32,2026-04-01
-pat_004,Ricardo Silva Lima,ricardo silva lima,7714700.0,(62) 99999-0004,51,2026-04-11
-pat_005,Carla Pereira,carla pereira,7714701.0,(62) 99999-0005,29,2026-04-26
-pat_006,João Martins,joão martins,7714702.0,(62) 99999-0006,47,2026-05-06
-pat_007,Beatriz Gomes,beatriz gomes,7714703.0,(62) 99999-0007,35,2026-05-16
-pat_008,Mariana Dias,mariana dias,7714704.0,(62) 99999-0008,41,2026-05-21

@@ -3,9 +3,13 @@
 Mirrors the add-patient unit test suite: covers id generation, the
 ``patient_has_ficha`` helper, and the ``_handle_submit`` handler. Uses
 ``FakeSessionState`` from ``conftest.py`` so no Streamlit runtime is
-required. Each test runs against a per-test copy of the seed CSVs (the
-``csv_dir`` fixture), so appends never leak between tests or into the
-developer's local checkout.
+required. Each test runs against a per-test copy of the (header-only)
+CSVs (the ``csv_dir`` fixture), so appends never leak between tests
+or into the developer's local checkout.
+
+Base zerada (T9): os CSVs vem sem dados. Tests que precisavam do
+paciente ``pat_001`` do seed agora chamam ``_register_patient()`` no
+setup para construir a pre-existencia.
 """
 from __future__ import annotations
 
@@ -17,7 +21,35 @@ from src.components.ficha import (
     _handle_submit,
     patient_has_ficha,
 )
-from src.data_layer import load_table, next_id
+from src.data_layer import append_row, load_table, next_id
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _register_patient(name: str = "Paciente Teste", age: int = 30) -> str:
+    """Registra paciente na base zerada e retorna o ``patient_id``.
+
+    Substitui a dependencia do seed ``pat_001`` (removido em T9).
+    Cada test que precisa de um paciente existente chama este
+    helper no setup.
+    """
+    pid = next_id("patients")
+    append_row(
+        "patients",
+        {
+            "patient_id": pid,
+            "name": name,
+            "normalized_name": name.lower(),
+            "medical_record": None,
+            "phone": None,
+            "age": age,
+            "created_at": pd.Timestamp.today().normalize(),
+        },
+    )
+    return pid
 
 
 # ---------------------------------------------------------------------------
@@ -42,10 +74,27 @@ def test_next_weight_id_starts_at_001(csv_dir):
 
 
 def test_next_item_id_avoids_existing_seed_ids(csv_dir):
-    # seed has item_001..item_NN; ensure the helper skips them
-    new_id = next_id("treatment_plan_items")
-    df = load_table("treatment_plan_items")
-    assert not df["plan_item_id"].astype(str).eq(new_id).any()
+    """Base zerada: simular item pre-existente e verificar que
+    ``next_id`` pula o numero ja' usado.
+
+    Antes do T9, o test confiava que o seed tinha ``item_001..item_NN``
+    e que ``next_id`` retornava ``item_new_001``. Agora a pre-existencia
+    e' construida no proprio teste.
+    """
+    append_row(
+        "treatment_plan_items",
+        {
+            "plan_item_id": "item_new_001",
+            "plan_id": "plan_new_test",
+            "raw_name": "Pre-existente",
+            "category": "EV",
+            "sessions": 1,
+            "frequency_type": "Semanal",
+            "frequency_text": "1 sessao - semanal",
+            "created_at": pd.Timestamp.today().normalize(),
+        },
+    )
+    assert next_id("treatment_plan_items") == "item_new_002"  # pula o 001
 
 
 # ---------------------------------------------------------------------------
@@ -54,8 +103,25 @@ def test_next_item_id_avoids_existing_seed_ids(csv_dir):
 
 
 def test_patient_has_ficha_true_for_existing_plan(csv_dir):
-    # pat_001 has a plan in the seed fixture
-    assert patient_has_ficha("pat_001") is True
+    """Base zerada: registrar paciente + criar plan, depois verificar."""
+    pid = _register_patient(name="Com Plan", age=30)
+    plan_id = next_id("treatment_plans")
+    append_row(
+        "treatment_plans",
+        {
+            "plan_id": plan_id,
+            "patient_id": pid,
+            "budget_code": "orc_test",
+            "issue_date": pd.Timestamp.today().normalize(),
+            "start_date": pd.Timestamp.today().normalize(),
+            "end_date": pd.Timestamp.today().normalize(),
+            "status": "Ativo",
+            "main_goal": "g",
+            "is_renewal": False,
+            "notes": "",
+        },
+    )
+    assert patient_has_ficha(pid) is True
 
 
 def test_patient_has_ficha_false_for_missing_patient(csv_dir):
@@ -63,17 +129,13 @@ def test_patient_has_ficha_false_for_missing_patient(csv_dir):
 
 
 def test_patient_has_ficha_false_when_no_plan_in_seed(csv_dir):
-    """pat_001 has a plan in the seed, but if we wipe the plan table, the helper says False."""
-    from src.data_layer import csv_dir as data_csv_dir
-
-    plans_path = data_csv_dir() / "treatment_plans.csv"
-    plans_path.write_text("plan_id,patient_id,budget_code,issue_date,start_date,end_date,status,main_goal,is_renewal,notes\n", encoding="utf-8")
-    assert patient_has_ficha("pat_001") is False
+    """Base zerada: plans CSV so' tem header; helper retorna False
+    para qualquer pid.
+    """
+    assert patient_has_ficha("any_pid") is False
 
 
 def test_patient_has_ficha_reflects_recent_appends(csv_dir):
-    from src.data_layer import append_row
-
     append_row(
         "treatment_plans",
         {
@@ -129,27 +191,29 @@ def _cadastro_form_state(
 
 
 def test_handle_ficha_submit_writes_plan_and_goal(fake_session_state, csv_dir):
+    pid = _register_patient(name="Vai pra Ficha", age=30)
     _cadastro_form_state(fake_session_state)
 
-    _handle_submit("pat_001")
+    _handle_submit(pid)
 
     plans = load_table("treatment_plans")
     goals = load_table("patient_goals")
-    # 1 new plan, 1 new goal
-    assert len(plans) == 9  # 8 seed + 1
-    assert len(goals) == 9  # 8 seed + 1
+    # 0 seed + 1 new = 1
+    assert len(plans) == 1
+    assert len(goals) == 1
     new_plan = plans.iloc[-1]
     new_goal = goals.iloc[-1]
-    assert new_plan["patient_id"] == "pat_001"
+    assert new_plan["patient_id"] == pid
     assert new_goal["plan_id"] == new_plan["plan_id"]
     # Navigation side effect
     assert fake_session_state["page"] == "Ficha do Paciente"
-    assert fake_session_state["selected_patient_id"] == "pat_001"
+    assert fake_session_state["selected_patient_id"] == pid
 
 
 def test_handle_ficha_submit_creates_weight_entry_when_peso_atual_positive(
     fake_session_state, csv_dir
 ):
+    pid = _register_patient(name="Com Peso Atual", age=30)
     _cadastro_form_state(
         fake_session_state,
         objetivo="",
@@ -159,18 +223,19 @@ def test_handle_ficha_submit_creates_weight_entry_when_peso_atual_positive(
         status="Aguardando início",
     )
 
-    _handle_submit("pat_001")
+    _handle_submit(pid)
 
     weights = load_table("weight_entries")
-    assert len(weights) == 16  # 15 seed + 1
+    assert len(weights) == 1  # 0 seed + 1 new
     new_weight = weights.iloc[-1]
     assert float(new_weight["weight"]) == 82.5
-    assert new_weight["patient_id"] == "pat_001"
+    assert new_weight["patient_id"] == pid
 
 
 def test_handle_ficha_submit_skips_weight_entry_when_peso_atual_zero(
     fake_session_state, csv_dir
 ):
+    pid = _register_patient(name="Sem Peso Atual", age=30)
     _cadastro_form_state(
         fake_session_state,
         objetivo="",
@@ -180,15 +245,16 @@ def test_handle_ficha_submit_skips_weight_entry_when_peso_atual_zero(
         status="Aguardando início",
     )
 
-    _handle_submit("pat_001")
+    _handle_submit(pid)
 
     weights = load_table("weight_entries")
-    assert len(weights) == 15  # seed only
+    assert len(weights) == 0  # base zerada, peso_atual=0 nao cria entry
 
 
 def test_handle_ficha_submit_skips_items_with_empty_name(fake_session_state, csv_dir):
     """Items whose name is empty must be filtered out (the data editor
     starts with 3 empty rows by default)."""
+    pid = _register_patient(name="Com Items", age=30)
     _cadastro_form_state(
         fake_session_state,
         peso_inicial=0.0,
@@ -204,10 +270,10 @@ def test_handle_ficha_submit_skips_items_with_empty_name(fake_session_state, csv
         ),
     )
 
-    _handle_submit("pat_001")
+    _handle_submit(pid)
 
     items = load_table("treatment_plan_items")
-    assert len(items) == 19  # 17 seed + 2
+    assert len(items) == 2  # 0 seed + 2 (Injetaveis + Manipulado)
     assert items.iloc[-2]["raw_name"] == "Injetáveis"
     assert items.iloc[-2]["frequency_type"] == "Semanal"
     assert items.iloc[-2]["frequency_text"] == "8 sessões - semanal"
@@ -215,10 +281,11 @@ def test_handle_ficha_submit_skips_items_with_empty_name(fake_session_state, csv
 
 
 def test_handle_ficha_submit_updates_patient_age(fake_session_state, csv_dir):
+    pid = _register_patient(name="Vai Atualizar Idade", age=30)
     _cadastro_form_state(fake_session_state, age=55)
 
-    _handle_submit("pat_001")
+    _handle_submit(pid)
 
     patients = load_table("patients")
-    row = patients[patients["patient_id"] == "pat_001"].iloc[0]
+    row = patients[patients["patient_id"] == pid].iloc[0]
     assert int(row["age"]) == 55

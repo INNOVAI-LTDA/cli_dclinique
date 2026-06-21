@@ -1,0 +1,189 @@
+2026-06-21 10:37:23.622 Uvicorn server started on 0.0.0.0:8502
+WARNING: Static file serving is enabled, but no static folder found at C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\static. To disable static file serving, set server.enableStaticServing to false.
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8502
+  Network URL: http://192.168.0.171:8502
+  External URL: http://189.120.137.164:8502
+
+2026-06-21 10:51:20.622 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2026-06-21 10:51:35.063 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2026-06-21 10:51:39.964 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2026-06-21 10:51:44.769 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2026-06-21 10:51:49.400 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2026-06-21 10:51:56.237 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2026-06-21 10:51:58.303 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2026-06-21 10:52:02.994 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2026-06-21 10:52:05.144 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2026-06-21 10:52:16.124 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2026-06-21 14:40:39.771 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 129, in exec_func_with_error_handling
+    result = func()
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 789, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\app.py", line 58, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\app.py", line 54, in main
+    _route(page)(data)
+    ~~~~~~~~~~~~^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\pages\pacientes.py", line 512, in render
+    _render_table(filtered.iloc[start:end], data)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\pages\pacientes.py", line 423, in _render_table
+    if not patient_has_ficha(patient_id, data)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\components\ficha.py", line 43, in patient_has_ficha
+    df = load_table("treatment_plans")
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\data_layer\__init__.py", line 85, in load_table
+    return _get_backend().load_table(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\data_layer\postgres_backend.py", line 221, in load_table
+    cur.execute(f"SELECT * FROM {table}")
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\psycopg\cursor.py", line 117, in execute
+    raise ex.with_traceback(None)
+psycopg.OperationalError: consuming input failed: could not receive data from server: Software caused connection abort (0x00002745/10053)
+SSL SYSCALL error: Software caused connection abort (0x00002745/10053)
+2026-06-21 14:40:49.935 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 129, in exec_func_with_error_handling
+    result = func()
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 789, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\app.py", line 58, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\app.py", line 54, in main
+    _route(page)(data)
+    ~~~~~~~~~~~~^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\pages\pacientes.py", line 512, in render
+    _render_table(filtered.iloc[start:end], data)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\pages\pacientes.py", line 423, in _render_table
+    if not patient_has_ficha(patient_id, data)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\components\ficha.py", line 43, in patient_has_ficha
+    df = load_table("treatment_plans")
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\data_layer\__init__.py", line 85, in load_table
+    return _get_backend().load_table(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\data_layer\postgres_backend.py", line 220, in load_table
+    with engine.cursor() as cur:
+         ~~~~~~~~~~~~~^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\psycopg\connection.py", line 240, in cursor
+    self._check_connection_ok()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\psycopg\_connection_base.py", line 532, in _check_connection_ok
+    raise e.OperationalError("the connection is closed")
+psycopg.OperationalError: the connection is closed
+2026-06-21 14:41:45.437 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 129, in exec_func_with_error_handling
+    result = func()
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 789, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\app.py", line 58, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\app.py", line 54, in main
+    _route(page)(data)
+    ~~~~~~~~~~~~^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\pages\pacientes.py", line 512, in render
+    _render_table(filtered.iloc[start:end], data)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\pages\pacientes.py", line 423, in _render_table
+    if not patient_has_ficha(patient_id, data)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\components\ficha.py", line 43, in patient_has_ficha
+    df = load_table("treatment_plans")
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\data_layer\__init__.py", line 85, in load_table
+    return _get_backend().load_table(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\data_layer\postgres_backend.py", line 220, in load_table
+    with engine.cursor() as cur:
+         ~~~~~~~~~~~~~^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\psycopg\connection.py", line 240, in cursor
+    self._check_connection_ok()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\psycopg\_connection_base.py", line 532, in _check_connection_ok
+    raise e.OperationalError("the connection is closed")
+psycopg.OperationalError: the connection is closed
+2026-06-21 14:47:05.118 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 129, in exec_func_with_error_handling
+    result = func()
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 789, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\app.py", line 58, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\app.py", line 54, in main
+    _route(page)(data)
+    ~~~~~~~~~~~~^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\pages\pacientes.py", line 512, in render
+    _render_table(filtered.iloc[start:end], data)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\pages\pacientes.py", line 423, in _render_table
+    if not patient_has_ficha(patient_id, data)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\components\ficha.py", line 43, in patient_has_ficha
+    df = load_table("treatment_plans")
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\data_layer\__init__.py", line 85, in load_table
+    return _get_backend().load_table(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\src\data_layer\postgres_backend.py", line 220, in load_table
+    with engine.cursor() as cur:
+         ~~~~~~~~~~~~~^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\psycopg\connection.py", line 240, in cursor
+    self._check_connection_ok()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\dmene\Projetos\innovai\git\cli_dclinique\.claude\worktrees\feature-neon-data-layer\.venv\Lib\site-packages\psycopg\_connection_base.py", line 532, in _check_connection_ok
+    raise e.OperationalError("the connection is closed")
+psycopg.OperationalError: the connection is closed

@@ -1,0 +1,133 @@
+{
+  "template_id": "orcamento_dclinique",
+  "version": "2.0",
+  "coordinate_system": "pymupdf_points_top_left",
+  "page": 1,
+  "notes": "Re-mapeado em 2026-06-17 a partir da extração real dos 15 PDFs em data/pacientes_e_planos/. cabecalho removido (conteúdo é o médico, sempre idêntico, não pertence a nenhuma tabela do contrato). titulo 'Plano de Tratamento' descartado. budget_code (orc_new_NNN) é gerado no persist.py via next_id. data de emissão extraída do rodapé em formato 'D de Mês de AAAA' (normalizer date_pt_br_ext).",
+  "zones": [
+    {
+      "id": "dados_paciente",
+      "type": "text",
+      "bbox": [30, 115, 565, 230],
+      "mode": "single",
+      "field_mappings": [
+        {
+          "target_table": "patients",
+          "target_column": "name",
+          "pattern": "Paciente:?\\s*([A-Za-zÀ-úÁ-Ú][A-Za-zÀ-úÁ-Ú\\s'.-]+?)(?:\\r?\\n|Prontu|$)",
+          "normalizer": "name",
+          "required": true
+        },
+        {
+          "target_table": "patients",
+          "target_column": "medical_record",
+          "pattern": "Prontu[áa]rio:?\\s*([0-9]+)",
+          "normalizer": "str",
+          "required": true
+        },
+        {
+          "target_table": "patients",
+          "target_column": "phone",
+          "pattern": "Telefone:?\\s*(\\([\\d\\s]+\\)|[\\d\\s()+\\-]+?)(?:\\r?\\n|Endere|$)",
+          "normalizer": "phone",
+          "required": false
+        },
+        {
+          "target_table": "patients",
+          "target_column": "age",
+          "pattern": "Idade:?\\s*(\\d+)",
+          "normalizer": "int",
+          "required": false
+        },
+        {
+          "target_table": "patients",
+          "target_column": "cpf",
+          "pattern": "CPF:?\\s*([0-9][0-9.\\-]+[0-9])",
+          "normalizer": "str",
+          "required": false
+        },
+        {
+          "target_table": "patients",
+          "target_column": "rg",
+          "pattern": "RG:?\\s*([0-9][0-9.\\-]+[0-9])",
+          "normalizer": "str",
+          "required": false
+        },
+        {
+          "target_table": "patients",
+          "target_column": "address",
+          "pattern": "Endere[çc]o:?\\s*(.+?)(?:\\r?\\n|Plano de Tratamento|$)",
+          "normalizer": "str",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "procedimentos",
+      "type": "text",
+      "bbox": [30, 240, 565, 640],
+      "mode": "list",
+      "target_table": "treatment_plan_items",
+      "field_mappings": [
+        {
+          "target_table": "treatment_plan_items",
+          "target_column": "raw_name",
+          "pattern": "^(?!Aplicação|Foco do tratamento|Preparação)(.+?)(?:\\s*-\\s*Plano|\\s{2,}Plano|\\s*-\\s*Origon|\\s+\\d+\\s*[Rr]egiã?o|\\s*=\\s*\\d+\\s*unidade|$)",
+          "normalizer": "str",
+          "required": true
+        },
+        {
+          "target_table": "treatment_plan_items",
+          "target_column": "sessions_expected",
+          "pattern": "(\\d+)\\s*sess(?:[ãáa]o|[õoó]es)",
+          "normalizer": "int",
+          "required": false
+        },
+        {
+          "target_table": "treatment_plan_items",
+          "target_column": "frequency_text",
+          "pattern": "(\\d+ vez(es)? (por \\w+|dose única))",
+          "normalizer": "str",
+          "required": false
+        },
+        {
+          "target_table": "treatment_plan_items",
+          "target_column": "frequency_type",
+          "pattern": "(por semana|por m[êe]s|por dia|dose única|semanal|quinzenal|di[áa]rio|mensal)",
+          "normalizer": "frequency_type",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "procedimentos_meta",
+      "type": "text",
+      "bbox": [30, 240, 565, 640],
+      "mode": "single",
+      "field_mappings": [
+        {
+          "target_table": "treatment_plans",
+          "target_column": "main_goal",
+          "pattern": "Foco do tratamento:?\\s*(.+?)(?:\\r?\\n|$)",
+          "normalizer": "str",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "rodape",
+      "type": "text",
+      "bbox": [30, 650, 565, 820],
+      "mode": "single",
+      "field_mappings": [
+        {
+          "target_table": "treatment_plans",
+          "target_column": "issue_date",
+          "pattern": "Data de emiss[ãa]o:?\\s*(\\d{1,2}\\s+de\\s+[A-Za-zçãéíóú]+(?:\\s+de)?\\s+\\d{4})",
+          "normalizer": "date_pt_br_ext",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

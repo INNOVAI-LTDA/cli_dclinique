@@ -42,6 +42,12 @@ NEW_ID_PREFIX: dict[str, str] = {
     "treatment_plan_items": "item_new",
     "patient_goals": "goal_new",
     "weight_entries": "w_new",
+    # ``execution_summary`` rows are minted by the PDF import
+    # wizard's read-model projection; the prefix needs to be
+    # unique across all primary-key columns so dedup scans
+    # (which inspect every pk in the schema) don't collide with
+    # patient/plan ids.
+    "execution_summary": "exec_new",
 }
 
 # Column-level type metadata used by ``load_all`` to round-trip through
@@ -216,6 +222,127 @@ def update_row(table: str, key_column: str, key_value: str, updates: dict) -> No
     df.to_csv(path, index=False)
 
 
+def _delete_rows(table: str, key_column: str, key_value: str) -> int:
+    """Remove rows from ``table`` where ``key_column == key_value``.
+
+    Returns the number of rows removed (0 when no match). Used by
+    :func:`replace_plan` to clear a plan's old items / goal before
+    inserting the new ones, and could be reused by future flows that
+    need a "delete by id" primitive.
+    """
+    path = _csv_path(table)
+    if not path.exists():
+        return 0
+    df = load_table(table)
+    if df.empty or key_column not in df.columns:
+        return 0
+    mask = df[key_column].astype(str) == str(key_value)
+    if not mask.any():
+        return 0
+    remaining = df.loc[~mask]
+    remaining.to_csv(path, index=False)
+    return int(mask.sum())
+
+
+def delete_rows(table: str, key_column: str, key_value: str) -> int:
+    """Public ``delete_rows`` — see :func:`_delete_rows` for the contract.
+
+    Exposed at module level so the data layer router can re-export
+    it. The wizard's ``persist.py`` calls it to clear
+    ``execution_summary`` rows when a plan is being replaced (the
+    private ``_delete_rows`` is reserved for internal use by
+    :func:`replace_plan`).
+    """
+    return _delete_rows(table, key_column, key_value)
+
+
+def find_plan_by_issue_date(patient_id: str, issue_date: str) -> dict | None:
+    """Return the first plan row whose ``(patient_id, issue_date)`` matches.
+
+    The natural-key check is the same one the PDF import wizard uses
+    to decide whether a freshly-parsed plan should replace an
+    existing one (re-import of the same orçamento) or be added as a
+    new plan (different emissão). ``issue_date`` is matched as a
+    string — the parser always emits ISO ``YYYY-MM-DD`` and the
+    CSV writer normalises date columns to the same format, so a
+    string compare is sufficient and avoids timezone surprises.
+    """
+    df = load_table("treatment_plans")
+    if df.empty or "patient_id" not in df.columns or "issue_date" not in df.columns:
+        return None
+    matches = df[
+        (df["patient_id"].astype(str) == str(patient_id))
+        & (df["issue_date"].astype(str) == str(issue_date))
+    ]
+    if matches.empty:
+        return None
+    return matches.iloc[0].to_dict()
+
+
+def replace_plan(
+    patient_id: str,
+    issue_date: str,
+    new_plan_row: dict,
+    new_items: list[dict],
+) -> str | None:
+    """Replace an existing plan in place: clear its items + goal, patch
+    the plan row, and insert the new items with the same ``plan_id``.
+
+    The replacement is keyed by the natural key
+    ``(patient_id, issue_date)`` — if no plan matches, the function
+    is a no-op and returns ``None`` so the caller can fall back to
+    a normal insert. When a plan is found, the function:
+
+    1. Deletes the old ``treatment_plan_items`` rows whose
+       ``plan_id`` matches the existing plan.
+    2. Deletes the old ``patient_goals`` row whose ``plan_id``
+       matches (if any).
+    3. Patches the plan row in place via :func:`update_row`, keeping
+       the same ``plan_id`` (so ``appointment_items`` and other FK
+       references stay valid) but writing the new field values.
+    4. Generates a fresh ``plan_item_id`` for each entry in
+       ``new_items`` via :func:`next_id` and appends the items
+       under the same ``plan_id``. The caller does not need to
+       pre-allocate ids — the helper mints them at the moment of
+       the actual ``append_row`` call so consecutive calls always
+       see a different id.
+    5. Returns the existing ``plan_id``.
+
+    Each item's ``plan_id`` is overridden with the existing one so
+    the cascade delete on step 1 doesn't wipe the just-inserted
+    rows.
+    """
+    existing = find_plan_by_issue_date(patient_id, issue_date)
+    if existing is None:
+        return None
+
+    existing_plan_id = str(existing.get("plan_id", ""))
+    if not existing_plan_id:
+        return None
+
+    # 1+2. Clear out the plan's children before patching the plan row.
+    _delete_rows("treatment_plan_items", "plan_id", existing_plan_id)
+    _delete_rows("patient_goals", "plan_id", existing_plan_id)
+
+    # 3. Patch the plan row. Only the mutable fields (everything except
+    # ``plan_id`` and ``patient_id``) are taken from ``new_plan_row``.
+    updates: dict = {}
+    for col, value in new_plan_row.items():
+        if col in {"plan_id", "patient_id"}:
+            continue
+        updates[col] = value
+    update_row("treatment_plans", "plan_id", existing_plan_id, updates)
+
+    # 4. Append the new items under the same plan_id, minting a fresh
+    # id per item at append time (so consecutive items never collide).
+    for item in new_items:
+        item_id = next_id("treatment_plan_items")
+        item_with_id = {**item, "plan_id": existing_plan_id, "plan_item_id": item_id}
+        append_row("treatment_plan_items", item_with_id)
+
+    return existing_plan_id
+
+
 # ---------------------------------------------------------------------------
 # ID generation
 # ---------------------------------------------------------------------------
@@ -247,4 +374,23 @@ def next_id(table: str) -> str:
     # column in the schema by convention.
     key_col = EXPECTED_SCHEMAS[table][0]
     used: set[str] = set(df[key_col].dropna().astype(str).tolist())
+    return _next_indexed_id(used, prefix)
+
+
+def next_id_with_prefix(prefix: str) -> str:
+    """Return the next available ``{prefix}_NNN`` id for an arbitrary prefix.
+
+    Used by the PDF importer to mint ``orc_new_NNN`` budget codes — the
+    source PDFs do not carry a budget number, so the persist step needs
+    a fresh one with the conventional ``orc_new_`` shape. The counter is
+    derived by scanning the existing ``treatment_plans.budget_code``
+    column for any value already starting with this prefix, so multiple
+    imports in the same session don't collide.
+    """
+    used: set[str] = set()
+    df = load_table("treatment_plans")
+    if not df.empty and "budget_code" in df.columns:
+        for value in df["budget_code"].dropna().astype(str).tolist():
+            if value.startswith(f"{prefix}_"):
+                used.add(value)
     return _next_indexed_id(used, prefix)

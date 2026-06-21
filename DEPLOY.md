@@ -40,6 +40,12 @@ commitado. LGPD classifica dados de saúde como sensíveis.
    reais e **nunca** deve ir para o controle de versão.
 4. **Confirmar que `data/images/` não tem capturas de tela com dados
    pessoais** (nomes, pesos identificáveis, etc.).
+5. **Confirmar que o projeto Neon foi provisionado e o schema foi
+   inicializado** — em PRD o backend ativo e' Postgres (Neon), nao CSV.
+   O app deve subir com ``DCLINIQUE_BACKEND=postgres`` apontando para a
+   DSN em ``st.secrets["postgres"]["dsn"]`` e as 11 tabelas criadas
+   (vazias). Ver §13 para o passo a passo de provisionamento + schema
+   bootstrap. Item binario: ou o smoke em PRD passa, ou este item falha.
 
 ### 2.1 Sign-off do release inicial (2026-06-08)
 
@@ -97,9 +103,10 @@ Cloud, em formato TOML. O arquivo commitado
 **Passos:**
 
 1. No painel do app no Streamlit Cloud: **Settings → Secrets**.
-2. Preencher apenas as seções que o código realmente consome. Hoje
-   nenhuma (o `src/` não chama `st.secrets` em lugar nenhum) — esta
-   etapa é preventiva para a fase de Supabase.
+2. Preencher apenas as seções que o código realmente consome. Em PRD:
+   - ``[postgres]`` com a DSN do projeto Neon (ver §13).
+   As secoes ``[supabase]`` e ``[integrations]`` continuam comentadas
+   — Supabase nao e' mais o backend alvo.
 3. Salvar. O app reinicia automaticamente.
 
 **Regras:**
@@ -172,13 +179,19 @@ O deploy é reversível. Ordem de preferência:
    descontinuado). Settings → Delete app. O snapshot some; o repo
    permanece intacto e pode ser republicado.
 
-O rollback **não** afeta os dados de `data/csv/` — eles vivem no repo
-versionado, não no servidor do Streamlit.
+O rollback **não** afeta os dados do Neon — eles vivem no projeto
+Neon provisionado, nao no servidor do Streamlit. Para desfazer
+escritas em runtime (e.g., apagar um paciente), usar o console
+Neon (SQL editor) ou restaurar de backup. Em emergencia: deletar
+e recriar o branch de teste (testes) ou o schema inteiro (PRD).
 
 ## 8. Limites conhecidos
 
 - **Cold start ≈ 2,5 s** — limitação do framework Streamlit (não do
   código). Detalhes em `SLA_REPORT.md` §5.
+- **Neon cold start ≈ 500 ms** — o compute do Neon escala a zero
+  apos ~5 min de inatividade. O primeiro request apos esse intervalo
+  paga o wakeup. Detalhes em `SLA_REPORT.md` §6.
 - **Sem login próprio** — o gate é o de viewers do Streamlit Cloud.
   Quando o projeto migrar para Supabase, esse gate provavelmente vira
   desnecessário (o Supabase traz seu próprio auth).
@@ -193,12 +206,17 @@ versionado, não no servidor do Streamlit.
 | Arquivo | Papel no deploy |
 |---|---|
 | `.python-version` | Streamlit Cloud escolhe Python 3.13 |
-| `requirements.txt` | Pinos com compatible release para build reprodutível |
+| `requirements.txt` | Pinos com compatible release + `psycopg[binary]>=3.2,<4` |
 | `.streamlit/config.toml` | Postura de produção: `headless`, `gatherUsageStats=false`, `maxUploadSize=50` |
-| `.streamlit/secrets.toml.example` | Documenta o formato dos secrets (o real é gitignored) |
-| `.gitignore` | Exclui `secrets.toml`, `.env`, `data/private/`, `data/pacientes_e_planos/` |
+| `.streamlit/secrets.toml.example` | Documenta o formato dos secrets (o real é gitignored) — agora inclui `[postgres]` |
+| `.gitignore` | Exclui `secrets.toml`, `.env`, `data/private/`, `data/pacientes_e_planos/`, `data/test_logs/` |
+| `src/data_layer/postgres_backend.py` | Backend Postgres (DCLINIQUE_BACKEND=postgres) — 6 funções públicas idênticas a `csv_backend.py` |
+| `src/data_layer/connection.py` | `get_engine()` lazy, cacheado por `@st.cache_resource`, lê DSN de `st.secrets["postgres"]["dsn"]` ou env var |
+| `src/data_layer/schema.py` | `to_ddl()` + `init_schema()` — converte `EXPECTED_SCHEMAS` em DDL Postgres idempotente |
+| `scripts/init_neon_schema.py` | Bootstrap one-shot do schema no Neon (idempotente) |
+| `scripts/make_synthetic_pdf.py` | Gera PDF PII-clean (entregue ao cliente para primeiro teste de import) |
 | `scripts/scan_pii.py` | Ferramenta auxiliar do gate de LGPD |
-| `DEPLOY.md` (este) | Guia de release |
+| `DEPLOY.md` (este) | Guia de release + §13 sobre Neon |
 | `README.md` | Aponta para este guia na seção "Deploy" |
 | `CLAUDE.md` | Marca o deploy como exceção documentada, com gate de LGPD obrigatório |
 
@@ -227,3 +245,112 @@ versionado, não no servidor do Streamlit.
    desse ciclo, com a base de uso real para guiar decisões.
 
 **Plano de rollback** (caso o smoke falhe): ver §7.
+
+## 11. Atualização de schema em runtime
+
+Alem do gate de LGPD antes de publicar, qualquer mudanca em
+``src/schemas.py:EXPECTED_SCHEMAS`` exige:
+
+1. Atualizar o schema do Neon (via ``init_schema()`` que e'
+   idempotente — ``CREATE TABLE IF NOT EXISTS``). Para mudancas
+   destrutivas (drop column, change type), escrever migration manual
+   via SQL editor do Neon.
+2. Atualizar os 11 CSVs em ``data/csv/`` (header) para que o backend
+   CSV (dev local) e o Postgres (PRD) compartilhem o mesmo schema.
+3. Atualizar ``tests/conftest.py`` se algum fixture depender do
+   shape das tabelas.
+
+## 12. Como rodar localmente apontando para o Neon
+
+Para dev local com Neon (em vez de CSVs):
+
+```bash
+# .env (gitignored)
+export NEON_DSN="postgresql://user:pass@ep-xxx.<region>.neon.tech/dclinique?sslmode=require"
+
+# Rodar
+DCLINIQUE_BACKEND=postgres .venv/Scripts/python.exe -m streamlit run app.py
+```
+
+Para dev local sem internet (fallback CSV):
+
+```bash
+DCLINIQUE_BACKEND=csv .venv/Scripts/python.exe -m streamlit run app.py
+```
+
+## 13. Neon Postgres (fonte de verdade em PRD)
+
+Em PRD o app NAO usa mais os CSVs em ``data/csv/`` — o backend ativo
+e' o ``postgres_backend`` (DCLINIQUE_BACKEND=postgres), apontando para
+um projeto Neon Serverless Postgres. Os CSVs viraram **schema
+reference** (header only, 0 linhas; verifique com
+``head -1 data/csv/patients.csv``).
+
+> **Runbook detalhado:** para o passo-a-passo operacional completo
+> (provisionamento, DSN/API key/Project ID, .env local, bootstrap
+> do schema, smoke test, secrets do Streamlit Cloud, cold start,
+> rotação de credenciais, troubleshooting), ver
+> [**`NEON_SETUP.md`**](NEON_SETUP.md). Esta seção e' o resumo; o
+> runbook e' a referência operacional.
+
+**Provisionamento (manual, fora do codigo):**
+
+1. Criar conta em <https://neon.tech>.
+2. Criar projeto ``dclinique-prod``. Regiao sugerida:
+   ``aws-sa-east-1`` (Sao Paulo, quando disponivel); fallback
+   ``aws-us-east-2`` (Ohio). Confirmar com o usuario antes de
+   provisionar — LGPD exige atencao a regiao para dados de saude.
+3. No branch ``main``: copiar a **DSN** do painel (Connection
+   string → pooler ou direct, ambos funcionam).
+4. Criar **API key** (Settings → API keys). Anotar.
+5. Anotar o **Project ID** (Settings → General). Usado pelo
+   ``db_branch`` fixture em testes para criar branches efemeros.
+
+**Variaveis de ambiente (local; em PRD vao para os secrets do app):**
+
+```bash
+NEON_DSN="postgresql://user:pass@ep-xxx.<region>.neon.tech/dclinique?sslmode=require"
+NEON_API_KEY="<api-key>"
+NEON_PROJECT_ID="<project-id>"
+```
+
+**Schema bootstrap (one-shot, apos provisionar):**
+
+```bash
+# Dentro do worktree, com NEON_DSN setado:
+DCLINIQUE_BACKEND=postgres .venv/Scripts/python.exe scripts/init_neon_schema.py
+```
+
+Saida esperada: ``[OK] 11/11 tables created (or already exist)``.
+Exit code 0 = sucesso; 1 = DSN ausente; 2 = DB fora do ar.
+
+**Smoke test do data layer contra Neon:**
+
+```bash
+DCLINIQUE_BACKEND=postgres .venv/Scripts/python.exe -c \
+  "from src.data_layer import load_all; d=load_all(); print(list(d.keys()), {k: len(v) for k,v in d.items()})"
+```
+
+Esperado: 11 chaves, 0 linhas em cada tabela (base zerada).
+
+**Cold start do Neon (importante):** o compute do Neon escala a zero
+apos ~5 min de inatividade. O primeiro request apos esse intervalo
+paga **~500 ms adicionais** para acordar o compute (wakeup + SSL
+handshake + query). Medir e atualizar ``SLA_REPORT.md §6`` com dados
+reais. Mitigacao se virar problema: upgrade do plano Neon para um
+tier sem auto-suspend.
+
+**Limites do free tier:** 191.9 horas/mes de compute. Para o piloto
+do cliente e' folgado; se virar gargalo, upgrade preventivo
+(Launch tier ~$20/mes).
+
+**LGPD — dados em terceiro:** dados reais do cliente vao morar em
+Neon. Adicionar item de sign-off (item 5 do gate). Avaliar se a
+regiao ``aws-sa-east-1`` (Sao Paulo) e' aceitavel para a operacao
+brasileira antes de provisionar.
+
+**Testes de integracao:** ``tests/conftest.py`` ganhou a fixture
+``db_branch`` (session-scoped) que cria um branch Neon via API
+para a sessao de testes e deleta no teardown. Requer ``NEON_API_KEY``
++ ``NEON_PROJECT_ID`` no env. Sem esses, o fixture faz ``pytest.skip``
+e os testes caem no fallback ``csv_dir``.

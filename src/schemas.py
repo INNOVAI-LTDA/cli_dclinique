@@ -4,7 +4,20 @@ from __future__ import annotations
 import pandas as pd
 
 EXPECTED_SCHEMAS: dict[str, list[str]] = {
-    "patients": ["patient_id", "name", "normalized_name", "medical_record", "phone", "age", "created_at"],
+    "patients": [
+        "patient_id",
+        "name",
+        "normalized_name",
+        "medical_record",
+        "phone",
+        "age",
+        # Campos extraídos do PDF (CPF/RG são natural-key para dedup;
+        # ambos nullable porque o PDF pode não trazê-los).
+        "cpf",
+        "rg",
+        "address",
+        "created_at",
+    ],
     "treatment_plans": [
         "plan_id",
         "patient_id",
@@ -42,6 +55,14 @@ EXPECTED_SCHEMAS: dict[str, list[str]] = {
         "sessions_completed",
         "sessions_remaining",
         "plan_created_at",
+        # ``frequency_type`` was added in June 2026 so the ficha's
+        # "Plano de tratamento" table can build the "Frequência de
+        # Aplicação" column directly from the satellite view — the
+        # projection comes from ``treatment_plan_items.frequency_type``
+        # at the wizard's persist step. Stays NULL for plans that
+        # were imported before this column existed; the ficha
+        # renders "-" for NULL.
+        "frequency_type",
     ],
     "appointments": [
         "appointment_id",
