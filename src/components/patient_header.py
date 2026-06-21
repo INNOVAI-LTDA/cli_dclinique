@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 
+import pandas as pd
 import streamlit as st
 
 from src.components.badges import badge
@@ -24,6 +25,56 @@ def _avatar_html(initials: str) -> str:
         f'<span>{safe_initials}</span>'
         "</div>"
     )
+
+
+def _is_missing(value: object) -> bool:
+    """Return True when ``value`` is None, NaN, or empty/blank.
+
+    The ficha renders "-" for missing fields. We coerce via
+    ``pd.isna`` so pandas sentinels (``NaN``, ``NaT``, ``pd.NA``)
+    collapse to True alongside Python ``None`` and empty strings —
+    the same rule the wizard's sanitization layer uses before a
+    value lands in the data layer. Catches the regression where
+    a missing CPF would render literally as ``"None"`` or
+    ``"nan"`` (June 2026).
+    """
+    if value is None:
+        return True
+    if isinstance(value, float) and pd.isna(value):
+        return True
+    if isinstance(value, str) and not value.strip():
+        return True
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _or_dash(value: object) -> str:
+    """Render ``value`` as a string, or ``"-"`` when it's missing."""
+    if _is_missing(value):
+        return "-"
+    s = str(value).strip()
+    return s if s else "-"
+
+
+def _age_text(value: object) -> str:
+    """Render an age, or empty string when no real value exists.
+
+    Per the June 2026 spec the header hides the ``" anos"`` suffix
+    entirely (and does NOT show ``"-"``) when the patient's age
+    is missing — the empty space is intentional, not a
+    placeholder. A real age renders as ``"42 anos"``.
+    """
+    if _is_missing(value):
+        return ""
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return ""
+    if n <= 0:
+        return ""
+    return f"{n} anos"
 
 
 def _header_css() -> str:
@@ -106,7 +157,16 @@ def _header_css() -> str:
 
 
 def render_patient_header(patient: dict, status_label: str | None = None) -> None:
-    """Render the patient hero header (avatar, name, status, actions)."""
+    """Render the patient hero header (avatar, name, status, actions).
+
+    The meta line under the name carries **Prontuário** and **CPF**
+    per the June 2026 spec — the ficha needs to expose both so the
+    operator can cross-reference the patient without leaving the
+    page. The age (when known) is appended to the same line; when
+    missing, the line ends at the CPF — no ``"- anos"`` placeholder
+    and no literal ``"None"`` / ``"nan"``. Empty values are
+    collapsed to ``"-"`` consistently.
+    """
     name = str(patient.get("name", ""))
     initials = _initials(name)
     status = status_label or patient.get("status") or "—"
@@ -125,8 +185,22 @@ def render_patient_header(patient: dict, status_label: str | None = None) -> Non
             "</div>",
             unsafe_allow_html=True,
         )
+        # Build the meta line from individual tokens so we can
+        # leave the age out entirely when it's missing (per spec)
+        # instead of rendering ``"- anos"``. Tokens are joined
+        # with a centered middle dot (·) for visual rhythm.
+        prontuario = _or_dash(patient.get("medical_record"))
+        cpf = _or_dash(patient.get("cpf"))
+        age = _age_text(patient.get("age"))
+        meta_tokens = [
+            f"Prontuário: {html.escape(prontuario)}",
+            f"CPF: {html.escape(cpf)}",
+        ]
+        if age:
+            meta_tokens.append(html.escape(age))
+        meta_line = " · ".join(meta_tokens)
         st.markdown(
-            f'<p class="patient-header-meta">Prontuário {html.escape(str(patient.get("medical_record", "—")))} · {html.escape(str(patient.get("age", "—")))} anos</p>',
+            f'<p class="patient-header-meta">{meta_line}</p>',
             unsafe_allow_html=True,
         )
     with cols[2]:

@@ -1,1 +1,1 @@
-execution_id,patient_id,plan_id,budget_code,procedure_raw,procedure_category,status,sessions_expected,sessions_completed,sessions_remaining,plan_created_at
+execution_id,patient_id,plan_id,budget_code,procedure_raw,procedure_category,status,sessions_expected,sessions_completed,sessions_remaining,plan_created_at,frequency_type

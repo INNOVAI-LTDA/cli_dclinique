@@ -93,8 +93,51 @@ def update_row(*args, **kwargs):
     return _get_backend().update_row(*args, **kwargs)
 
 
+def delete_rows(*args, **kwargs):
+    """Delete rows by ``key_column == key_value`` (returns rowcount).
+
+    Wraps :func:`csv_backend.delete_rows` /
+    :func:`postgres_backend.delete_rows`. Used by the PDF import
+    wizard to clear ``execution_summary`` rows when a plan is being
+    replaced (the data-layer ``replace_plan`` only clears
+    ``treatment_plan_items`` and ``patient_goals``).
+    """
+    return _get_backend().delete_rows(*args, **kwargs)
+
+
 def next_id(*args, **kwargs):
     return _get_backend().next_id(*args, **kwargs)
+
+
+def next_id_with_prefix(*args, **kwargs):
+    """Mint a fresh ``{prefix}_NNN`` id from an arbitrary prefix.
+
+    Wraps :func:`csv_backend.next_id_with_prefix` /
+    :func:`postgres_backend.next_id_with_prefix`. Used by the PDF
+    importer to generate ``orc_new_NNN`` budget codes that don't
+    collide with previously imported plans.
+    """
+    return _get_backend().next_id_with_prefix(*args, **kwargs)
+
+
+def replace_plan(*args, **kwargs):
+    """Replace an existing plan in place (natural-key dedup).
+
+    Wraps :func:`csv_backend.replace_plan` /
+    :func:`postgres_backend.replace_plan`. If no plan matches the
+    ``(patient_id, issue_date)`` natural key, returns ``None`` so
+    the caller can fall back to a normal insert.
+    """
+    return _get_backend().replace_plan(*args, **kwargs)
+
+
+def find_plan_by_issue_date(*args, **kwargs):
+    """Look up a plan by its natural key ``(patient_id, issue_date)``.
+
+    Wraps :func:`csv_backend.find_plan_by_issue_date` /
+    :func:`postgres_backend.find_plan_by_issue_date`.
+    """
+    return _get_backend().find_plan_by_issue_date(*args, **kwargs)
 
 
 def csv_dir(*args, **kwargs):
@@ -129,7 +172,11 @@ __all__ = [
     "load_table",
     "append_row",
     "update_row",
+    "delete_rows",
     "next_id",
+    "next_id_with_prefix",
+    "replace_plan",
+    "find_plan_by_issue_date",
     "csv_dir",
     "data_dir",
     "reset_backend_cache",

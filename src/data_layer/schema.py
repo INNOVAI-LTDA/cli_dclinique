@@ -28,6 +28,15 @@ Transitive imports:
     Carregar `src.data_layer.schema` continua funcionando sem pandas;
     apenas a chamada a init_schema() precisa de src.schemas.
 """
+import re
+
+# Postgres unquoted identifier grammar: letter or underscore, then
+# letters / digits / underscores. Used in ``init_schema`` to guard
+# the ``ALTER TABLE ... ADD COLUMN`` interpolation; in practice
+# the column names come from the static ``EXPECTED_SCHEMAS`` dict,
+# so this is a defense-in-depth check (catches a future mistake
+# where someone adds a non-identifier to the schema).
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # NOTE: `from src.schemas import EXPECTED_SCHEMAS` foi movido para dentro
 # de init_schema() (linha ~no final do arquivo). Carregar este modulo
 # continua funcionando sem pandas instalado; a dependencia surge apenas
@@ -113,11 +122,23 @@ def to_ddl(table: str, columns: list) -> str:
 
 
 def init_schema(engine) -> None:
-    """Cria todas as 11 tabelas em EXPECTED_SCHEMAS se nao existirem.
+    """Cria todas as 11 tabelas em EXPECTED_SCHEMAS se nao existirem
+    e adiciona colunas novas em tabelas pre-existentes (idempotente).
 
-    Idempotente. Cada CREATE usa `IF NOT EXISTS`, entao re-chamar e
-    no-op quando as tabelas ja existem. Caller gerencia o lifecycle
-    do engine (abrir/fechar).
+    Dois passos para cada tabela:
+
+    1. ``CREATE TABLE IF NOT EXISTS`` -- a versao canonica do
+       schema, aplicada uma vez no bootstrap. ``IF NOT EXISTS``
+       garante que re-rodar e' no-op quando a tabela ja existe.
+    2. ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` para cada
+       coluna que esteja em ``EXPECTED_SCHEMAS`` mas que ainda
+       nao exista na tabela. Cobre o caso em que o schema
+       evolui (ex.: ``execution_summary.frequency_type`` foi
+       adicionado em June 2026) e o deploy roda contra uma base
+       que ja tinha a tabela sem a coluna. ``ADD COLUMN IF NOT
+       EXISTS`` e' idempotente no Postgres 9.6+.
+
+    Caller gerencia o lifecycle do engine (abrir/fechar).
 
     NAO usa `with engine:` -- em psycopg 3 o `__exit__` do
     Connection fecha a conexao ao sair (a menos que ela venha de
@@ -135,5 +156,34 @@ def init_schema(engine) -> None:
     from src.schemas import EXPECTED_SCHEMAS  # lazy: pandas via src.schemas
     with engine.cursor() as cur:
         for table, columns in EXPECTED_SCHEMAS.items():
-            ddl = to_ddl(table, columns)
-            cur.execute(ddl)
+            cur.execute(to_ddl(table, columns))
+            # Backfill: ensure every column in EXPECTED_SCHEMAS
+            # exists. The CREATE above only fires when the table
+            # is brand new; existing tables need an explicit
+            # ALTER to pick up the new columns. We introspect
+            # information_schema once per table (cached by PG).
+            cur.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = %s",
+                (table,),
+            )
+            existing = {row[0] for row in cur.fetchall()}
+            for col in columns:
+                if col in existing:
+                    continue
+                # Defense in depth: ``col`` comes from the static
+                # ``EXPECTED_SCHEMAS`` dict (not user input), so
+                # the regex below is a no-op in practice — but it
+                # would catch a future mistake where someone adds
+                # a non-identifier to the schema. The format
+                # `[a-zA-Z_][a-zA-Z0-9_]*` matches Postgres'
+                # unquoted identifier rules.
+                if not _IDENTIFIER_RE.match(col):
+                    raise ValueError(
+                        f"init_schema: invalid column name {col!r} "
+                        f"in table {table!r}"
+                    )
+                cur.execute(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "
+                    f"{col} {_postgres_type(table, col)}"
+                )

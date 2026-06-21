@@ -42,7 +42,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from src.data_layer.connection import get_engine
+from src.data_layer.connection import get_engine, reset_engine
+from src.data_layer.connection import _with_retry_on_dead_conn  # noqa: F401
 from src.data_layer.schema import to_ddl as _to_ddl  # re-exported for tests
 
 # Mirror of csv_backend.NEW_ID_PREFIX. Kept inline (not imported) to avoid
@@ -53,6 +54,12 @@ NEW_ID_PREFIX: dict[str, str] = {
     "treatment_plan_items": "item_new",
     "patient_goals": "goal_new",
     "weight_entries": "w_new",
+    # ``execution_summary`` rows are minted by the PDF import
+    # wizard's read-model projection; the prefix needs to be
+    # unique across all primary-key columns so dedup scans
+    # (which inspect every pk in the schema) don't collide with
+    # patient/plan ids.
+    "execution_summary": "exec_new",
 }
 
 # Per-table dtype maps (mirror de csv_backend._DATE_COLUMNS etc.).
@@ -193,6 +200,7 @@ def _coerce_dtypes(df: pd.DataFrame, table: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
+@_with_retry_on_dead_conn
 def load_table(table: str) -> Any:
     """Read a single table into a DataFrame.
 
@@ -245,6 +253,56 @@ def load_all() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _sanitize_param(value: Any) -> Any:
+    """Coerce pandas-specific sentinels into values psycopg can bind.
+
+    Two pandas values trip the psycopg adapters and write a
+    far-future timestamp that then breaks the read-back path
+    (psycopg's ``TimestampLoader`` rejects years past 10K with
+    ``DataError: timestamp too large``):
+
+    * ``pd.NaT`` (the missing-date sentinel) — psycopg binds it
+      to ``'48113-11-21 00:00:01'`` (year 48113, derived from
+      ``NaT.timestamp()``). Coerce to ``None`` so it lands as
+      SQL NULL.
+    * ``float('nan')`` / ``pd.NA`` — same family of "missing
+      numeric" sentinels. Coerce to ``None`` for the same reason
+      (NULL in an INTEGER / DOUBLE PRECISION column is the
+      canonical "missing" representation).
+
+    Other values pass through unchanged. The CSV backend does
+    not need this because pandas' ``to_csv`` already maps NaT
+    and NaN to the empty string (which ``_coerce_dtypes`` then
+    turns into ``NaT`` / ``NaN`` again on the read — no far-future
+    date).
+    """
+    # ``pd.NaT`` is a pandas-specific value; importing pandas at
+    # module top would defeat the lazy-import design of this
+    # module. The ``pd`` reference is the local alias from
+    # ``_import_pandas`` — never top-level.
+    pd = _import_pandas()
+    try:
+        if value is pd.NaT:
+            return None
+    except (TypeError, ValueError):
+        # Some objects (e.g. ``None``, ``int``) reject ``is``
+        # comparison with pd.NaT. Fall through to the next check.
+        pass
+    if value is None:
+        return None
+    # ``float('nan')`` and ``pd.NA`` are detected by ``pd.isna``
+    # without requiring a pandas import beyond the helper above.
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        # Objects that don't support ``pd.isna`` (custom classes,
+        # arbitrary Python objects) are left alone.
+        return value
+    return value
+
+
+@_with_retry_on_dead_conn
 def append_row(table: str, row: dict) -> None:
     """INSERT one row into ``table``.
 
@@ -259,6 +317,12 @@ def append_row(table: str, row: dict) -> None:
     SQL: ``INSERT INTO <table> (col1, col2, ...) VALUES (%s, %s, ...)``
     — column names are restricted to the schema catalog (safe);
     values are passed through psycopg's ``%s`` placeholder (parameterized).
+
+    Each value is run through :func:`_sanitize_param` so that
+    pandas-specific missing sentinels (``pd.NaT``, ``pd.NA``,
+    ``float('nan')``) become SQL NULL — without this, psycopg
+    binds ``pd.NaT`` to a far-future timestamp and the next
+    ``SELECT *`` blows up on the read.
     """
     table = _validate_table(table)
     columns = _columns_for(table)
@@ -273,7 +337,7 @@ def append_row(table: str, row: dict) -> None:
     col_list = ", ".join(safe_cols)
     placeholders = ", ".join(["%s"] * len(safe_cols))
     sql = f"INSERT INTO {table} ({col_list}) VALUES ({placeholders})"
-    params = tuple(row[c] for c in safe_cols)
+    params = tuple(_sanitize_param(row[c]) for c in safe_cols)
 
     engine = get_engine()
     # NAO usar `with engine:` -- psycopg 3 fecha a conexao no
@@ -285,6 +349,7 @@ def append_row(table: str, row: dict) -> None:
         cur.execute(sql, params)
 
 
+@_with_retry_on_dead_conn
 def update_row(table: str, key_column: str, key_value: str, updates: dict) -> None:
     """UPDATE one row of ``table``.
 
@@ -294,7 +359,9 @@ def update_row(table: str, key_column: str, key_value: str, updates: dict) -> No
     patient-age update path).
 
     Columns in ``updates`` not in the schema are silently dropped.
-    An empty ``updates`` dict is a no-op.
+    An empty ``updates`` dict is a no-op. Values are run through
+    :func:`_sanitize_param` for the same reason as in
+    :func:`append_row` (pd.NaT and friends → SQL NULL).
     """
     table = _validate_table(table)
     columns = _columns_for(table)
@@ -308,12 +375,47 @@ def update_row(table: str, key_column: str, key_value: str, updates: dict) -> No
         f"UPDATE {table} SET {set_clause} "
         f"WHERE {key_column} = %s"
     )
-    params = tuple(safe_updates.values()) + (key_value,)
+    params = tuple(_sanitize_param(v) for v in safe_updates.values()) + (
+        key_value,
+    )
 
     engine = get_engine()
     # NAO usar `with engine:` -- ver comentario em append_row.
     with engine.cursor() as cur:
         cur.execute(sql, params)
+
+
+@_with_retry_on_dead_conn
+def delete_rows(table: str, key_column: str, key_value: str) -> int:
+    """DELETE rows of ``table`` whose ``key_column == key_value``.
+
+    Returns the rowcount (0 when no match). Mirrors
+    :func:`csv_backend.delete_rows`. The wizard's ``persist.py``
+    calls it to clear ``execution_summary`` rows when a plan is
+    being replaced (the data-layer ``replace_plan`` only clears
+    ``treatment_plan_items`` and ``patient_goals``; the satellite
+    execution view is the wizard's responsibility).
+
+    The key column and value are bound as parameters
+    (``WHERE {key_column} = %s``) — psycopg treats the column
+    identifier as a value because we interpolate it via
+    f-string. The column is validated against the schema catalog
+    by :func:`_validate_table` plus an in-set check, so a hostile
+    ``key_column`` cannot reach the SQL string.
+    """
+    table = _validate_table(table)
+    columns = _columns_for(table)
+    if key_column not in columns:
+        raise ValueError(
+            f"delete_rows({table!r}, {key_column!r}, ...): "
+            f"coluna nao existe no schema. Validas: {columns}"
+        )
+
+    sql = f"DELETE FROM {table} WHERE {key_column} = %s"
+    engine = get_engine()
+    with engine.cursor() as cur:
+        cur.execute(sql, (key_value,))
+        return cur.rowcount or 0
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +434,7 @@ def _next_indexed_id(used: set[str], prefix: str) -> str:
     return f"{prefix}_{counter:03d}"
 
 
+@_with_retry_on_dead_conn
 def next_id(table: str) -> str:
     """Return the next available ``{prefix}_NNN`` id for ``table``.
 
@@ -351,3 +454,149 @@ def next_id(table: str) -> str:
 
     used: set[str] = {str(r[0]) for r in rows if r[0] is not None}
     return _next_indexed_id(used, prefix)
+
+
+@_with_retry_on_dead_conn
+def next_id_with_prefix(prefix: str) -> str:
+    """Return the next available ``{prefix}_NNN`` id for an arbitrary prefix.
+
+    Used by the PDF importer to mint ``orc_new_NNN`` budget codes.
+    Mirrors :func:`csv_backend.next_id_with_prefix`: scans the
+    ``treatment_plans.budget_code`` column for any value already
+    starting with this prefix and returns the next free counter.
+    """
+    engine = get_engine()
+    with engine.cursor() as cur:
+        cur.execute(
+            "SELECT budget_code FROM treatment_plans "
+            "WHERE budget_code LIKE %s",
+            (f"{prefix}_%",),
+        )
+        rows = cur.fetchall()
+
+    used: set[str] = {str(r[0]) for r in rows if r[0] is not None}
+    return _next_indexed_id(used, prefix)
+
+
+# ---------------------------------------------------------------------------
+# Plan replace flow (used by PDF import for natural-key dedup)
+# ---------------------------------------------------------------------------
+
+
+def _delete_rows(table: str, key_column: str, key_value: str) -> int:
+    """Delete rows from ``table`` where ``key_column == key_value``.
+
+    Returns the rowcount (0 when no match). Mirrors
+    :func:`csv_backend._delete_rows` semantics.
+    """
+    table = _validate_table(table)
+    engine = get_engine()
+    with engine.cursor() as cur:
+        cur.execute(
+            f"DELETE FROM {table} WHERE {key_column} = %s",
+            (key_value,),
+        )
+        return cur.rowcount
+
+
+@_with_retry_on_dead_conn
+def find_plan_by_issue_date(patient_id: str, issue_date: str) -> dict | None:
+    """Return the first plan row whose ``(patient_id, issue_date)`` matches.
+
+    Mirrors :func:`csv_backend.find_plan_by_issue_date`. ``issue_date``
+    is matched as a string because the parser always emits ISO
+    ``YYYY-MM-DD`` and Postgres' ``DATE`` column serialises the same
+    way for round-trip equality.
+    """
+    engine = get_engine()
+    with engine.cursor() as cur:
+        cur.execute(
+            "SELECT * FROM treatment_plans "
+            "WHERE patient_id = %s AND issue_date = %s "
+            "LIMIT 1",
+            (patient_id, issue_date),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        desc = cur.description
+        col_names = [d[0] for d in desc]
+        return dict(zip(col_names, row))
+
+
+@_with_retry_on_dead_conn
+def replace_plan(
+    patient_id: str,
+    issue_date: str,
+    new_plan_row: dict,
+    new_items: list[dict],
+) -> str | None:
+    """Replace an existing plan in place: clear items + goal, patch
+    the plan row, insert new items under the same plan_id.
+
+    Atomic via a single ``Connection.transaction()`` block so the
+    four steps either all commit or all roll back. Mirrors
+    :func:`csv_backend.replace_plan` semantics — returns the
+    existing ``plan_id`` on success, ``None`` when no plan matches
+    (so the caller can fall back to a normal insert).
+    """
+    existing = find_plan_by_issue_date(patient_id, issue_date)
+    if existing is None:
+        return None
+
+    existing_plan_id = str(existing.get("plan_id", ""))
+    if not existing_plan_id:
+        return None
+
+    plan_columns = _columns_for("treatment_plans")
+    item_columns = _columns_for("treatment_plan_items")
+
+    engine = get_engine()
+    with engine.transaction(), engine.cursor() as cur:
+        # 1+2. Clear out the plan's children before patching the plan row.
+        cur.execute(
+            "DELETE FROM treatment_plan_items WHERE plan_id = %s",
+            (existing_plan_id,),
+        )
+        cur.execute(
+            "DELETE FROM patient_goals WHERE plan_id = %s",
+            (existing_plan_id,),
+        )
+
+        # 3. Patch the plan row. Only mutable fields (everything except
+        # ``plan_id`` / ``patient_id``) are taken from ``new_plan_row``.
+        updates: dict = {
+            c: v for c, v in new_plan_row.items()
+            if c in plan_columns and c not in {"plan_id", "patient_id"}
+        }
+        if updates:
+            set_clause = ", ".join(f"{c} = %s" for c in updates)
+            cur.execute(
+                f"UPDATE treatment_plans SET {set_clause} "
+                f"WHERE plan_id = %s",
+                tuple(_sanitize_param(v) for v in updates.values())
+                + (existing_plan_id,),
+            )
+
+        # 4. Append the new items under the same plan_id, minting a
+        # fresh ``plan_item_id`` per row inside the transaction so
+        # consecutive items never collide.
+        for item in new_items:
+            item_id = next_id("treatment_plan_items")
+            item_with_id = {
+                **item,
+                "plan_id": existing_plan_id,
+                "plan_item_id": item_id,
+            }
+            safe_cols = [c for c in item_columns if c in item_with_id]
+            if not safe_cols:
+                continue
+            col_list = ", ".join(safe_cols)
+            placeholders = ", ".join(["%s"] * len(safe_cols))
+            cur.execute(
+                f"INSERT INTO treatment_plan_items ({col_list}) "
+                f"VALUES ({placeholders})",
+                tuple(_sanitize_param(item_with_id[c]) for c in safe_cols),
+            )
+
+    return existing_plan_id

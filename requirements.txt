@@ -9,3 +9,10 @@ python-dotenv>=1.0,<2
 # (no libpq build needed). Used by src.data_layer.postgres_backend
 # (lazy import inside the connection layer to keep Streamlit cold start flat).
 psycopg[binary]>=3.2,<4
+
+# PDF import feature (Ações > Importar paciente(s) do PDF).
+# pymupdf is the PyMuPDF binding used by src.pdf_importer.extract
+# (lazy import inside the function to keep Streamlit cold start flat).
+# Pillow is used by scripts/pdf_lab.py (dev CLI for zone visualization).
+pymupdf>=1.24,<2
+Pillow>=10,<12
