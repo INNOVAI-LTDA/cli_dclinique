@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+import logging
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,8 @@ import streamlit as st
 from src.charts.decision_map import quadrants
 from src.metrics import patient_summary
 from src.utils.safe import safe_int, safe_pct
+
+_log = logging.getLogger(__name__)
 
 
 def _decision_map_css() -> str:
@@ -250,16 +253,37 @@ def _patient_stats(row: pd.Series) -> dict[str, str]:
     The replacement routes every cast through ``src.utils.safe``,
     which uses ``pd.isna`` and falls back to a default for any
     missing/empty/uncastable value.
-    """
-    score_display = f"{safe_int(row.get('score'))}"
-    alerts_display = str(safe_int(row.get("open_alerts")))
-    engagement_display = safe_pct(row.get("engagement_rate"))
 
-    return {
-        "Engajamento": engagement_display,
-        "Satisfação": f"{score_display}/10",
-        "Alertas": alerts_display,
-    }
+    Defensive boundary (2026-06-21): any unexpected error here would
+    freeze the page for the whole user. We catch broadly, log the
+    full traceback via stdlib logging, and return a sentinel dict so
+    the quadrant card still renders.
+    """
+    try:
+        score_display = f"{safe_int(row.get('score'))}"
+        alerts_display = str(safe_int(row.get("open_alerts")))
+        engagement_display = safe_pct(row.get("engagement_rate"))
+
+        return {
+            "Engajamento": engagement_display,
+            "Satisfação": f"{score_display}/10",
+            "Alertas": alerts_display,
+        }
+    except Exception:  # noqa: BLE001 — defensive boundary per Cliente directive
+        # The log call itself must not raise — a failing ``row.get`` here
+        # would defeat the entire defensive boundary.
+        try:
+            pid = row.get("patient_id")  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001
+            pid = "<unknown>"
+        _log.exception(
+            "mapa_decisao._patient_stats failed for row patient_id=%r", pid
+        )
+        return {
+            "Engajamento": "—",
+            "Satisfação": "—",
+            "Alertas": "—",
+        }
 
 
 def _patient_initials(name: str) -> str:
@@ -417,21 +441,42 @@ def _decision_map_html(groups: dict[str, pd.DataFrame]) -> str:
 
 
 def render(data):
+    """Render the Mapa de Decisão page.
+
+    Defensive boundary (2026-06-21): any exception in the rendering
+    pipeline used to freeze the Streamlit page. We now wrap the whole
+    body in try/except so the user always sees a friendly error and
+    the page never goes blank. The traceback goes to stdlib logging
+    so it surfaces in Streamlit Cloud's Logs tab.
+    """
     st.markdown(_decision_map_css(), unsafe_allow_html=True)
     st.title("Mapa de Decisão")
     st.caption("Matriz 2x2 baseada em engajamento mockado e satisfação declarada.")
 
-    summary = patient_summary(data)
-    sat = summary["is_satisfied"].fillna(False)
-    eng = summary["is_engaged"]
-    # Single vectorised write replaces 4 sequential boolean `.loc` scans.
-    summary["quadrante"] = np.select(
-        [eng & sat, eng & ~sat, ~eng & sat],
-        ["Engajado + Satisfeito", "Engajado + Não satisfeito", "Não engajado + Satisfeito"],
-        default="Não engajado + Não satisfeito",
-    )
+    try:
+        summary = patient_summary(data)
 
-    groups = quadrants(summary)
+        # Prevenção inline NA-frágil: ``~eng`` levanta
+        # ``TypeError: boolean value of NA is ambiguous`` se
+        # ``is_engaged`` carregar ``pd.NA`` (caso real no PRD para
+        # pacientes sem entrada em satisfaction_entries / peso).
+        sat = summary["is_satisfied"].fillna(False)
+        eng = summary["is_engaged"].fillna(False)
 
-    st.markdown('<div class="dm-section-gap"></div>', unsafe_allow_html=True)
-    st.markdown(_decision_map_html(groups), unsafe_allow_html=True)
+        # Single vectorised write replaces 4 sequential boolean `.loc` scans.
+        summary["quadrante"] = np.select(
+            [eng & sat, eng & ~sat, ~eng & sat],
+            ["Engajado + Satisfeito", "Engajado + Não satisfeito", "Não engajado + Satisfeito"],
+            default="Não engajado + Não satisfeito",
+        )
+
+        groups = quadrants(summary)
+
+        st.markdown('<div class="dm-section-gap"></div>', unsafe_allow_html=True)
+        st.markdown(_decision_map_html(groups), unsafe_allow_html=True)
+    except Exception:  # noqa: BLE001 — defensive boundary per Cliente directive
+        _log.exception("mapa_decisao.render failed")
+        st.error(
+            "Não foi possível carregar o Mapa de Decisão. "
+            "O time já foi notificado — tente recarregar a página."
+        )
