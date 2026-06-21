@@ -9,6 +9,7 @@ import streamlit as st
 
 from src.charts.decision_map import quadrants
 from src.metrics import patient_summary
+from src.utils.safe import safe_int, safe_pct
 
 
 def _decision_map_css() -> str:
@@ -235,16 +236,29 @@ def _decision_map_css() -> str:
 
 
 def _patient_stats(row: pd.Series) -> dict[str, str]:
-    """Generate display stats for a patient row."""
-    engagement = row.get("engagement_rate", 0) * 100
-    score = row.get("score", 0)
-    alerts = int(row.get("open_alerts", 0))
+    """Generate display stats for a patient row.
 
-    score_display = f"{int(score) if score == score else 0}"
+    NA-safe coercion (2026-06-21): the previous implementation used
+    the pattern ``int(score) if score == score else 0`` (a legacy
+    NaN check) and called ``int(row.get("open_alerts", 0))`` without
+    a guard. Both blow up with ``TypeError: boolean value of NA is
+    ambiguous`` whenever the underlying ``Int64`` column carries
+    ``pd.NA`` as the missing sentinel (which happens for patients
+    with no entry in ``satisfaction_entries``). Reproduced in PRD
+    with ``Claudia Helena.pdf`` import → Mapa de Decisão.
+
+    The replacement routes every cast through ``src.utils.safe``,
+    which uses ``pd.isna`` and falls back to a default for any
+    missing/empty/uncastable value.
+    """
+    score_display = f"{safe_int(row.get('score'))}"
+    alerts_display = str(safe_int(row.get("open_alerts")))
+    engagement_display = safe_pct(row.get("engagement_rate"))
+
     return {
-        "Engajamento": f"{engagement:.0f}%",
+        "Engajamento": engagement_display,
         "Satisfação": f"{score_display}/10",
-        "Alertas": str(alerts),
+        "Alertas": alerts_display,
     }
 
 
