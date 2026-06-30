@@ -325,7 +325,12 @@ def test_patient_stats_returns_safe_dict_when_row_is_weird(caplog):
         # Must NOT raise.
         result = _patient_stats(WeirdRow())
 
-    assert result == {"Engajamento": "—", "Satisfação": "—", "Alertas": "—"}
+    assert result == {
+        "Engajamento": "—",
+        "Satisfação": "—",
+        "Alertas": "—",
+        "Frequência": "—",
+    }
     assert any(
         "mapa_decisao._patient_stats failed" in r.getMessage()
         for r in caplog.records

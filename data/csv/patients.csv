@@ -1,1 +1,1 @@
-patient_id,name,normalized_name,medical_record,phone,age,created_at
+patient_id,name,normalized_name,medical_record,phone,age,cpf,rg,address,created_at

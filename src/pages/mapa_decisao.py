@@ -1,18 +1,131 @@
-"""Decision map page."""
+"""Decision map page (Caminho B, Phase 4).
+
+Refactor de ``mapa_decisao.py`` para usar ``src.core.frequency.attendance_rate``
+como 3a dimensao (alem de engajamento e satisfacao). Adiciona a 5a classe
+"Sem comparecimento" ao quadrante 2x2 quando ``attendance_rate == 0``.
+
+Mudancas (vs v0.3.0):
+  * Importa ``load_client_deliverables``, ``load_client_sessions``,
+    ``load_deliverables`` de ``src.core.repos`` e ``attendance_rate`` de
+    ``src.core.frequency``.
+  * Nova funcao privada ``_compute_patient_attendance_rates(data, as_of)``
+    que agrega ``attendance_rate`` por ``client_id`` (mean sobre cds ativos).
+  * ``render()`` faz merge de ``attendance_rate`` em ``summary`` e adiciona
+    override "Sem comparecimento" no quadrante para pacientes com rate == 0.
+  * Painel lateral do paciente ganha dimensao "Frequencia" (X% comparecimento).
+  * CSS ganha classe ``.dm-quadrant-no-attendance`` (borda cinza neutro) para
+    o 5o quadrante.
+
+Boundary (N7 E6) preservado: o try/except defensivo do commit 76d47ab
+permanece como o unico ponto de captura. Erros novos viram ``st.error(...)``
+em vez de freeze (directriz do Cliente 2026-06-21).
+"""
 from __future__ import annotations
 
 import html
 import logging
+from datetime import date
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 
 from src.charts.decision_map import quadrants
+from src.core.frequency import attendance_rate
+from src.core.repos import (
+    load_client_deliverables,
+    load_client_sessions,
+    load_deliverables,
+)
 from src.metrics import patient_summary
 from src.utils.safe import safe_int, safe_pct
 
 _log = logging.getLogger(__name__)
+
+
+def _compute_patient_attendance_rates(
+    data: dict, *, as_of: date | None = None
+) -> pd.Series:
+    """Agrega ``attendance_rate`` por patient_id a partir de ``core.frequency``.
+
+    Algoritmo:
+      1. Carrega cds (Phase 1 schema), catalogo e sessoes via ``src.core.repos``.
+      2. Para cada cd com ``parent_client_deliverable_id is not None`` (item,
+         NAO plano-pai) E status ``"Ativo"`` ou ``"Aguardando"``: chama
+         ``core.frequency.attendance_rate(cd, d, sessions, as_of)``.
+      3. Agrupa por ``client_id`` (mean sobre todos os cds do paciente).
+      4. Mapeia ``client_id`` (int) para ``patient_id`` (string ``pat_NNN``)
+         usando o DataFrame ``patients``.
+
+    Args:
+        data: DataDict de ``src.data_layer.load_all()``.
+        as_of: data de referencia para o calculo. Default: ``date.today()``.
+            Em testes, pinar para uma data fixa (determinismo).
+
+    Returns:
+        ``pd.Series`` indexado por ``patient_id`` (string ``pat_NNN``),
+        valores ``float`` em ``[0.0, 1.0]``. Pacientes sem cds ativos NAO
+        aparecem no indice (caller usa ``fillna``).
+
+    N7:
+        Funcao AGGREGADORA -- chama a funcao pura ``core.frequency.attendance_rate``
+        (que NAO captura). Erros de tipo do core (TypeError, ValueError) sao
+        capturados localmente (caller defensivo) para que 1 paciente com data
+        invalida nao quebre o render inteiro. O try/except externo em
+        ``render()`` e' a barreira final.
+    """
+    if as_of is None:
+        as_of = date.today()
+
+    cds = load_client_deliverables(data)
+    deliverables = load_deliverables(data)
+    sessions = load_client_sessions(data)
+    deliverable_by_id = {d.id: d for d in deliverables}
+
+    # Build patient_id (str) → client_id (int) map a partir de patients.
+    # v1: patients.patient_id == "pat_NNN", onde NNN == client_id.
+    patients_df = data.get("patients", pd.DataFrame())
+    if isinstance(patients_df, pd.DataFrame) and not patients_df.empty and "patient_id" in patients_df.columns:
+        client_by_patient = {
+            str(row["patient_id"]): int(row["patient_id"].split("_")[-1])
+            for _, row in patients_df.iterrows()
+            if str(row["patient_id"]).startswith("pat_")
+        }
+    else:
+        client_by_patient = {}
+    patient_by_client = {v: k for k, v in client_by_patient.items()}
+
+    rates: list[tuple[int, float]] = []
+    for cd in cds:
+        # Apenas ITENS (parent setado) sao acionaveis; plano-pai e' agregado.
+        if cd.parent_client_deliverable_id is None:
+            continue
+        if cd.status not in ("Ativo", "Aguardando"):
+            continue
+        d = deliverable_by_id.get(cd.deliverable_id)
+        if d is None:
+            continue
+        try:
+            rate = attendance_rate(cd, d, sessions, as_of)
+        except (TypeError, ValueError, ZeroDivisionError) as exc:
+            # Caller defensivo: 1 paciente com data invalida nao trava o render.
+            _log.warning(
+                "attendance_rate falhou para client_id=%s cd_id=%s: %s",
+                cd.client_id, cd.id, exc,
+            )
+            continue
+        rates.append((cd.client_id, float(rate)))
+
+    if not rates:
+        return pd.Series(dtype="float64")
+    df = pd.DataFrame(rates, columns=["client_id", "rate"])
+    by_client = df.groupby("client_id")["rate"].mean()
+    # Renomeia indice: client_id (int) → patient_id (string).
+    by_client.index = by_client.index.map(
+        lambda cid: patient_by_client.get(int(cid))
+    )
+    by_client = by_client.dropna()
+    return by_client
 
 
 def _decision_map_css() -> str:
@@ -234,6 +347,16 @@ def _decision_map_css() -> str:
                 border-color: #fca5a5;
                 color: #991b1b;
             }
+
+            .dm-quadrant-no-attendance {
+                border-left: 3px solid #6b7280;
+            }
+
+            .dm-quadrant-no-attendance .dm-patient-dot {
+                background: #f3f4f6;
+                border-color: #d1d5db;
+                color: #374151;
+            }
         </style>
         """
 
@@ -254,6 +377,11 @@ def _patient_stats(row: pd.Series) -> dict[str, str]:
     which uses ``pd.isna`` and falls back to a default for any
     missing/empty/uncastable value.
 
+    Caminho B / Phase 4 (2026-06-23): added "Frequência" dimension
+    sourced from ``row["attendance_rate"]`` (computed in ``render``
+    via ``core.frequency.attendance_rate``). NaN → "Sem sessões";
+    otherwise ``X% comparecimento`` rounded to 0 decimals.
+
     Defensive boundary (2026-06-21): any unexpected error here would
     freeze the page for the whole user. We catch broadly, log the
     full traceback via stdlib logging, and return a sentinel dict so
@@ -264,10 +392,20 @@ def _patient_stats(row: pd.Series) -> dict[str, str]:
         alerts_display = str(safe_int(row.get("open_alerts")))
         engagement_display = safe_pct(row.get("engagement_rate"))
 
+        attendance_value = row.get("attendance_rate", pd.NA)
+        if pd.isna(attendance_value):
+            frequency_display = "Sem sessões"
+        else:
+            try:
+                frequency_display = f"{float(attendance_value) * 100:.0f}% comparecimento"
+            except (TypeError, ValueError):
+                frequency_display = "Sem sessões"
+
         return {
             "Engajamento": engagement_display,
             "Satisfação": f"{score_display}/10",
             "Alertas": alerts_display,
+            "Frequência": frequency_display,
         }
     except Exception:  # noqa: BLE001 — defensive boundary per Cliente directive
         # The log call itself must not raise — a failing ``row.get`` here
@@ -283,6 +421,7 @@ def _patient_stats(row: pd.Series) -> dict[str, str]:
             "Engajamento": "—",
             "Satisfação": "—",
             "Alertas": "—",
+            "Frequência": "—",
         }
 
 
@@ -400,6 +539,7 @@ def _decision_map_html(groups: dict[str, pd.DataFrame]) -> str:
         ("Engajado + Não satisfeito", "dm-quadrant-engaged-not-satisfied"),
         ("Não engajado + Satisfeito", "dm-quadrant-not-engaged-satisfied"),
         ("Não engajado + Não satisfeito", "dm-quadrant-not-engaged-not-satisfied"),
+        ("Sem comparecimento", "dm-quadrant-no-attendance"),
     ]
 
     target_ids: list[str] = []
@@ -448,13 +588,25 @@ def render(data):
     body in try/except so the user always sees a friendly error and
     the page never goes blank. The traceback goes to stdlib logging
     so it surfaces in Streamlit Cloud's Logs tab.
+
+    Caminho B / Phase 4 (2026-06-23): add 3a dimensao "Frequencia" via
+    ``core.frequency.attendance_rate``. Pacientes com ``attendance_rate``
+    conhecido E igual a zero sao movidos para a 5a classe
+    "Sem comparecimento" (override sobre as 4 classes normais). Pacientes
+    com ``attendance_rate`` NaN (sem cds ativos) permanecem nas 4 classes.
     """
     st.markdown(_decision_map_css(), unsafe_allow_html=True)
     st.title("Mapa de Decisão")
-    st.caption("Matriz 2x2 baseada em engajamento mockado e satisfação declarada.")
+    st.caption("Matriz 2x2 (engajamento x satisfação) + 5ª classe por comparecimento.")
 
     try:
         summary = patient_summary(data)
+
+        # Phase 4: agrega ``attendance_rate`` por ``patient_id`` (string).
+        # ``.reindex`` preserva a ordem de ``summary`` e preenche com NaN
+        # pacientes sem cds ativos (nao vao para "Sem comparecimento").
+        rates = _compute_patient_attendance_rates(data)
+        summary["attendance_rate"] = summary["patient_id"].map(rates)
 
         # Prevenção inline NA-frágil: ``~eng`` levanta
         # ``TypeError: boolean value of NA is ambiguous`` se
@@ -471,6 +623,29 @@ def render(data):
         )
 
         groups = quadrants(summary)
+
+        # Phase 4: 5a classe "Sem comparecimento" para pacientes com rate==0.
+        # ``==0`` (e nao ``< 0.5``) para alinhar com a spec do plano: rate==0
+        # significa nenhuma sessao assistida no periodo. ``NaN != 0`` por
+        # semantica pandas -- pacientes sem cds ativos NAO sao movidos.
+        if "attendance_rate" in summary.columns:
+            no_attendance_ids = set(
+                summary.loc[summary["attendance_rate"] == 0, "patient_id"].tolist()
+            )
+            if no_attendance_ids:
+                # Move pacientes das 4 classes originais para a 5a.
+                for key in list(groups.keys()):
+                    groups[key] = groups[key][
+                        ~groups[key]["patient_id"].isin(no_attendance_ids)
+                    ].copy()
+                groups["Sem comparecimento"] = summary[
+                    summary["patient_id"].isin(no_attendance_ids)
+                ].copy()
+            else:
+                # Garante a chave (vazia) para o iterador do ``_decision_map_html``
+                groups["Sem comparecimento"] = summary.iloc[0:0].copy()
+        else:
+            groups["Sem comparecimento"] = summary.iloc[0:0].copy()
 
         st.markdown('<div class="dm-section-gap"></div>', unsafe_allow_html=True)
         st.markdown(_decision_map_html(groups), unsafe_allow_html=True)
