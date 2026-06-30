@@ -104,6 +104,42 @@ As restrições abaixo aparecem em todos os `.github/agents/*.agent.md` e `.gith
 - **Preservar** nomes de campos e o contrato de `load_all()` (ver `src/schemas.py`).
 - **Não** aceitar pendências em validação sem registrar impacto.
 
+## Caminho B — referência obrigatória (N7, N8, N9)
+
+Quando o trabalho envolver o refactor incremental para o **modelo de dados v2** (4 classes: Organization / Users / Deliverables / Clients — ver `docs/data_model.md`), as políticas abaixo são **não-negociáveis** e devem ser lidas/consultadas **antes de qualquer código ser escrito**.
+
+### Documentos mandatórios
+
+| Doc | Propósito | Quando ler |
+|---|---|---|
+| `docs/data_model.md` | Design do modelo v2 (entidades, associações, DDL) | Antes de qualquer PR do refactor |
+| `docs/caminho_b_plano.md` | 8 fases do refactor + plano de testes + modelo de execução | Antes de iniciar cada fase |
+| `docs/exception_catalog.md` | Exceções por lib + mensagens PT-BR | Antes de chamar qualquer lib em `src/core/` |
+| `docs/experience_log.md` | Histórico de testes (passou/falhou) e lições | **No início de cada fase**, antes de escrever código |
+| `docs/phase_reports/phase_N_report.md` | Métricas de tempo/tokens por fase | Gerado a cada fim de fase |
+
+### Princípios não-negociáveis (resumo; detalhes em `docs/caminho_b_plano.md` §2)
+
+- **N7 — Tratamento de exceção obrigatório.** Toda chamada a função (lib externa ou código do projeto) é envolvida em `try/except` específico. Mensagem em **português**, log via `logging` (nunca `print`/`traceback`), **nunca** expor stacktrace bruto ao usuário. Catálogo de exceções da lib deve estar em `docs/exception_catalog.md` **antes** de o código ser escrito.
+- **N8 — Acumulação de experiência.** Todo teste (passou **ou** falhou) gera entrada no `docs/experience_log.md` antes da fase ser declarada pronta. Log é **append-only** — entradas nunca são editadas/deletadas. A IA lê o log inteiro **no início de cada fase**.
+- **N9 — Auditoria de custo de tokens.** A cada fim de fase, é produzido `docs/phase_reports/phase_N_report.md` com 9 métricas: tempo total, tempo código, tempo testes, tempo outros, caracteres totais, caracteres por feedback humano, método de conversão de tokens, tokens totais, tokens por feedback humano. Razão output/input > 20 = trigger para simplificar a próxima fase.
+
+### Critério de "fase pronta"
+
+Toda fase é considerada pronta apenas quando as 4 condições abaixo são **simultaneamente verdadeiras**:
+1. `ruff check src/core tests/` retorna 0 erros
+2. `pytest tests/` retorna 100% passed (incluindo `test_exception_handling.py`)
+3. `streamlit run app.py` sobe sem traceback e as 7 páginas renderizam
+4. N7 satisfeito: `test_exception_handling.py` passa, `docs/exception_catalog.md` atualizado, nenhum `print(` / `traceback.print_exc()` / `except:` em `src/core/`
+
+Adicionalmente: N8 satisfeito (entradas no `experience_log.md`) e N9 satisfeito (`phase_N_report.md` produzido).
+
+### Test execution
+
+- **Quem roda os testes:** o usuário (`pwsh scripts/run_core_tests.ps1`). A IA **não** roda os testes pelo usuário.
+- **Em caso de falha:** o usuário cola o conteúdo de `logs/test_core_<ts>.log` (humano) ou `logs/test_core_<ts>.json` (máquina) na conversa. A IA diagnostica a partir disso.
+- **Detalhes do script:** ver `docs/caminho_b_plano.md` §5.
+
 ## Agentes e prompts auxiliares (`.github/`)
 
 Há três agentes e seis prompts que modelam um fluxo macro-run:

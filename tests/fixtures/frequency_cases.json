@@ -1,0 +1,139 @@
+{
+  "_comment_purpose": "6 casos canonicos para src/core/frequency.py (Caminho B, Fase 2). Cada caso documenta os inputs (cd, d, sessions, as_of) e os outputs esperados para as 4 funcoes. Audit artifact -- um reviewer pode conferir a matematica lendo este JSON sem rodar pytest. Os testes em tests/test_core_frequency.py cobrem os mesmos casos programaticamente.",
+  "_comment_schema": "Datas em ISO 8601 (YYYY-MM-DD). Timestamps em ISO 8601 com hora (YYYY-MM-DDTHH:MM:SS). Campos de Deliverable e ClientDeliverable seguem src/core/types.py (forma canonica COM acentos -- 'Diario' NAO aparece aqui; a normalizacao de v1 mojibake para canonico acontece em mapping.py::_validate_frequencia).",
+  "_comment_data_inicio_offset": "Para reproduzir o caso, compute data_inicio = as_of - offset_days. O offset_days e' a duracao do ciclo ate a data de referencia. REFERENCE_DATE = 2026-06-23 (pinada em test_core_frequency.py).",
+  "case_01_diario_10d": {
+    "name": "Injetavel diario, 10 dias decorridos",
+    "cd": {
+      "client_id": 1,
+      "data_inicio_offset_days": 10,
+      "sessions_expected": 10
+    },
+    "d": {
+      "frequencia_tipo": "Diário"
+    },
+    "sessions": [
+      {"status": "Atendido", "offset_days": 10},
+      {"status": "Atendido", "offset_days": 9},
+      {"status": "Atendido", "offset_days": 8},
+      {"status": "Atendido", "offset_days": 7},
+      {"status": "Atendido", "offset_days": 6},
+      {"status": "Atendido", "offset_days": 5},
+      {"status": "Atendido", "offset_days": 4},
+      {"status": "Atendido", "offset_days": 3},
+      {"status": "Atendido", "offset_days": 2},
+      {"status": "Atendido", "offset_days": 1}
+    ],
+    "expected": {
+      "expected_sessions": 10,
+      "actual_sessions": 10,
+      "attendance_rate": 1.0,
+      "max_consecutive_missed": 0
+    }
+  },
+  "case_02_semanal_21d": {
+    "name": "Injetavel semanal, 21 dias decorridos (3 sessoes devidas)",
+    "cd": {
+      "client_id": 2,
+      "data_inicio_offset_days": 21,
+      "sessions_expected": 4
+    },
+    "d": {
+      "frequencia_tipo": "Semanal"
+    },
+    "sessions": [
+      {"status": "Atendido", "offset_days": 21},
+      {"status": "Atendido", "offset_days": 14},
+      {"status": "Cancelado", "offset_days": 7}
+    ],
+    "expected": {
+      "expected_sessions": 3,
+      "actual_sessions": 2,
+      "attendance_rate": 0.6667,
+      "max_consecutive_missed": 0
+    }
+  },
+  "case_03_cap_reached": {
+    "name": "Cap reached: 100 dias, Semanal, expected=4 -> cap em 4",
+    "cd": {
+      "client_id": 3,
+      "data_inicio_offset_days": 100,
+      "sessions_expected": 4
+    },
+    "d": {
+      "frequencia_tipo": "Semanal"
+    },
+    "sessions": [
+      {"status": "Atendido", "offset_days": 100},
+      {"status": "Atendido", "offset_days": 80},
+      {"status": "Atendido", "offset_days": 50},
+      {"status": "Atendido", "offset_days": 20}
+    ],
+    "expected": {
+      "expected_sessions": 4,
+      "actual_sessions": 4,
+      "attendance_rate": 1.0,
+      "max_consecutive_missed": 0
+    }
+  },
+  "case_04_before_start": {
+    "name": "as_of < data_inicio: zero sessoes devidas, rate = 0.0",
+    "cd": {
+      "client_id": 4,
+      "data_inicio_offset_days": -5,
+      "sessions_expected": 4
+    },
+    "d": {
+      "frequencia_tipo": "Semanal"
+    },
+    "sessions": [],
+    "expected": {
+      "expected_sessions": 0,
+      "actual_sessions": 0,
+      "attendance_rate": 0.0,
+      "max_consecutive_missed": 0
+    }
+  },
+  "case_05_unica": {
+    "name": "frequencia Unica: retorna cd.sessions_expected sem calcular",
+    "cd": {
+      "client_id": 5,
+      "data_inicio_offset_days": 30,
+      "sessions_expected": 1
+    },
+    "d": {
+      "frequencia_tipo": "Única"
+    },
+    "sessions": [
+      {"status": "Atendido", "offset_days": 30}
+    ],
+    "expected": {
+      "expected_sessions": 1,
+      "actual_sessions": 1,
+      "attendance_rate": 1.0,
+      "max_consecutive_missed": 0
+    }
+  },
+  "case_06_no_frequency": {
+    "name": "frequencia None: fallback para cd.sessions_expected",
+    "cd": {
+      "client_id": 6,
+      "data_inicio_offset_days": 30,
+      "sessions_expected": 6
+    },
+    "d": {
+      "frequencia_tipo": null
+    },
+    "sessions": [
+      {"status": "Atendido", "offset_days": 30},
+      {"status": "Atendido", "offset_days": 20},
+      {"status": "Cancelado", "offset_days": 10}
+    ],
+    "expected": {
+      "expected_sessions": 6,
+      "actual_sessions": 2,
+      "attendance_rate": 0.3333,
+      "max_consecutive_missed": 0
+    }
+  }
+}

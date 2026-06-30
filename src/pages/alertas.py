@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 
-CATEGORIES = ["Todos", "Enfermagem", "Médica", "Comercial", "Nutrição"]
+CATEGORIES = ["Todos", "Enfermagem", "Médica", "Comercial", "Nutrição", "Frequência"]
 PRIORITY_ORDER = {"Alta": 0, "Média": 1, "Baixa": 2}
 
 
@@ -185,6 +185,16 @@ def _alertas_css() -> str:
             .alertas-prio-media { background: #fef3c7; color: #b45309; }
             .alertas-prio-baixa { background: #dcfce7; color: #166534; }
 
+            /* Categoria "Frequência" (alertas automáticos de comparecimento --
+               Fase 5, originados em ``src/core/alerts.py::detect_frequency_alerts``).
+               Indigo para diferenciar visualmente do vermelho/âmbar/verde das
+               prioridades (não compete pela mesma atenção semantica). */
+            .alertas-category-frequency {
+                background: #e0e7ff;
+                color: #3730a3;
+                margin-right: 0.32rem;
+            }
+
             .alertas-status-aberto { background: #fee2e2; color: #b91c1c; }
             .alertas-status-andamento { background: #dbeafe; color: #1d4ed8; }
             .alertas-status-analise { background: #fef3c7; color: #b45309; }
@@ -236,6 +246,32 @@ def _priority_class(priority: str) -> str:
     if normalized in {"média", "media"}:
         return "alertas-prio-media"
     return "alertas-prio-baixa"
+
+
+def _category_class(category: str) -> str | None:
+    """CSS class para a badge de categoria, ou ``None`` se categoria neutra.
+
+    Categorias "tradicionais" (Enfermagem/Médica/Comercial/Nutrição) NAO
+    ganham badge propria -- a diferenciacao ja' vem do filtro ativo no
+    header (chip "is-active" na tab). Apenas categorias com semantica
+    operacional especial ganham pill na linha. Por enquanto: so'
+    ``"Frequência"`` (alertas automaticos de comparecimento da Fase 3/5).
+
+    Args:
+        category: Valor da coluna ``category`` do alerta. Comparacao
+            case/accent-insensitive via ``_strip_accents`` para tolerar
+            dados do v1 com encoding cp1252/acentos faltando.
+
+    Returns:
+        CSS class string (ex.: ``"alertas-category-frequency"``) ou
+        ``None`` se a categoria e' neutra (nao renderiza pill).
+    """
+    from src.core.mapping import _strip_accents  # lazy: alertas.py e' UI
+
+    normalized = _strip_accents((category or "").lower())
+    if normalized == "frequencia":
+        return "alertas-category-frequency"
+    return None
 
 
 def _status_class(status: str) -> str:
@@ -340,6 +376,7 @@ def _render_table(alerts: pd.DataFrame) -> None:
         patient_id = str(row.get("patient_id", ""))
         name = str(row.get("name", ""))
         alert_type = str(row.get("alert_type", ""))
+        category = str(row.get("category", ""))
         description = str(row.get("description", ""))
         priority = str(row.get("priority", ""))
         status = str(row.get("status", ""))
@@ -361,10 +398,21 @@ def _render_table(alerts: pd.DataFrame) -> None:
             f'target="_self" rel="noopener">{safe_name}</a>'
         )
 
+        # Phase 5: pill da categoria (so' "Frequência" tem classe por enquanto)
+        # ANTES do alert_type para destacar visualmente na coluna "Tipo".
+        category_pill_html = ""
+        cat_cls = _category_class(category)
+        if cat_cls:
+            category_pill_html = (
+                f'<span class="alertas-badge {cat_cls}">'
+                f'{html.escape(category)}'
+                '</span>'
+            )
+
         row_html = (
             '<div class="alertas-row">'
             f'<div class="alertas-cell-paciente">{paciente_html}</div>'
-            f'<div class="alertas-cell-tipo">{safe_type}</div>'
+            f'<div class="alertas-cell-tipo">{category_pill_html}{safe_type}</div>'
             f'<div class="alertas-cell-desc">{safe_desc}</div>'
             f'<div class="alertas-cell-prio"><span class="alertas-badge {_priority_class(priority)}">{safe_priority}</span></div>'
             f'<div class="alertas-cell-data">{created_at}</div>'

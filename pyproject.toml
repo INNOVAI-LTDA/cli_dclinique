@@ -1,0 +1,28 @@
+# pyproject.toml — config for ruff (linter) and pytest (test runner).
+# Used by scripts/run_core_tests.ps1 starting at Phase 0.
+
+[tool.ruff]
+# Match the project's Python version (CLAUDE.md).
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+# Conservative selection: catches real bugs, avoids style debates.
+# E/W = pycodestyle errors/warnings
+# F = pyflakes (undefined names, unused imports)
+# I = isort (import order)
+# ANN = flake8-annotations (type hints; required by N4)
+# B = flake8-bugbear (common Python pitfalls)
+# UP = pyupgrade (modern Python syntax; required for Python 3.13)
+select = ["E", "F", "W", "I", "ANN", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests don't need strict type hints on every fixture parameter.
+# Pattern: tests/test_*.py (matches all test files).
+"tests/test_*.py" = ["ANN"]
+
+[tool.pytest.ini_options]
+# Ensure `from src.core import ...` works without manual sys.path hacking.
+pythonpath = ["."]
+# Default to running everything under tests/.
+testpaths = ["tests"]

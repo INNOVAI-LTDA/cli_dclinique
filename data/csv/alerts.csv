@@ -1,1 +1,7 @@
 alert_id,patient_id,plan_id,category,alert_type,description,priority,status,created_at,comment
+alert_001,pat_002,plan_002,Enfermagem,Procedimento não iniciado,Confirmar primeira sessão do protocolo.,Alta,Aberto,2026-06-24,Contato ativo para início.
+alert_002,pat_003,plan_003,Médica,Manipulado pendente,Item do plano requer conferência manual.,Alta,Aberto,2026-06-23,Validar prescrição e disponibilidade.
+alert_003,pat_004,plan_004,Comercial,Baixo engajamento e insatisfação,Risco de abandono do plano.,Alta,Aberto,2026-06-24,Contato de resgate.
+alert_004,pat_005,plan_005,Médica,Engajada e insatisfeita,"Paciente presente, mas insatisfeita com evolução.",Média,Em análise,2026-06-22,Revisar expectativa de resultado.
+alert_005,pat_007,plan_007,Comercial,Renovação próxima,Plano termina nos próximos 30 dias.,Média,Aberto,2026-06-25,Oferecer renovação.
+alert_006,pat_008,plan_008,Nutrição,Sem peso atualizado,Não há peso recente registrado para o paciente.,Média,Aberto,2026-06-23,Solicitar pesagem atual.

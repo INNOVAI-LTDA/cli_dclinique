@@ -1,0 +1,12 @@
+# Dev/test dependencies for the path B refactor (N2, N7, N8, N9).
+# Install with: pip install -r requirements.txt -r requirements-dev.txt
+
+# Linter (N2, N4): runs FIRST in scripts/run_core_tests.ps1, aborts on errors.
+ruff>=0.6.0
+
+# Test runner + machine-parseable output (N5).
+pytest>=8.0
+pytest-json-report>=1.5
+
+# Token counting for phase audit reports (N9).
+tiktoken>=0.7

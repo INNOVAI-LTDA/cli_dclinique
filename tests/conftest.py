@@ -237,3 +237,51 @@ def _isolate_streamlit_cache():
 def patient_rows_only(base: dict[str, pd.DataFrame]) -> pd.DataFrame:
     """Helper: just the patients DataFrame from a base data dict."""
     return base["patients"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 0 fixtures for the path B refactor (docs/caminho_b_plano.md §3)
+# ---------------------------------------------------------------------------
+# These are additive — they don't conflict with the v1 fixtures above. Tests
+# for ``src.core`` (Phase 0+) use the new fixtures; existing v1 tests continue
+# to use the v1 fixtures (FakeSessionState, db_branch, csv_dir, base_data).
+
+
+@pytest.fixture
+def data_dict() -> dict[str, pd.DataFrame]:
+    """Load all 11 tables via the data layer (CSV backend in dev by default).
+
+    Distinct from ``base_data`` in that it does NOT depend on the ``csv_dir``
+    fixture (no seed copy, no monkeypatch) — it just calls ``load_all()``
+    against whatever backend ``DCLINIQUE_BACKEND`` resolves to. The PowerShell
+    wrapper script forces ``DCLINIQUE_BACKEND=csv`` so this is offline-safe.
+    """
+    from src.data_layer import load_all
+
+    return load_all()
+
+
+@pytest.fixture
+def backend() -> str:
+    """Return the active backend name (``'csv'`` or ``'postgres'``)."""
+    return os.environ.get("DCLINIQUE_BACKEND", "csv")
+
+
+@pytest.fixture
+def tmp_csv_dir(tmp_path: Path) -> Path:
+    """Provide an isolated, empty CSV directory for Phase 0 smoke tests.
+
+    Distinct from ``csv_dir`` (which copies seed CSVs in); this just gives
+    the test a clean subdirectory under ``tmp_path`` to write into.
+    """
+    csv_dir = tmp_path / "csv"
+    csv_dir.mkdir()
+    return csv_dir
+
+
+@pytest.fixture
+def expected_schemas() -> dict[str, list[str]]:
+    """The expected column lists per table, from ``src/schemas.py``."""
+    from src.schemas import EXPECTED_SCHEMAS
+
+    return EXPECTED_SCHEMAS
