@@ -1,17 +1,1 @@
 appointment_item_id,appointment_id,patient_id,budget_code,raw_item,category,status,appointment_start,professional
-appt_item_001_1,appt_001_1,pat_001,orc_001,Sessão de acompanhamento,Acompanhamento profissional,Atendido,2026-06-19 08:00:00,Equipe MAP
-appt_item_001_2,appt_001_2,pat_001,orc_001,Sessão de acompanhamento,Acompanhamento profissional,Atendido,2026-06-29 09:00:00,Equipe MAP
-appt_item_002_1,appt_002_1,pat_002,orc_002,Sessão de acompanhamento,Acompanhamento profissional,Agendado,2026-06-20 08:00:00,Equipe MAP
-appt_item_002_2,appt_002_2,pat_002,orc_002,Sessão de acompanhamento,Acompanhamento profissional,Agendado,2026-06-30 09:00:00,Equipe MAP
-appt_item_003_1,appt_003_1,pat_003,orc_003,Sessão de acompanhamento,Acompanhamento profissional,Confirmado,2026-06-21 08:00:00,Equipe MAP
-appt_item_003_2,appt_003_2,pat_003,orc_003,Sessão de acompanhamento,Acompanhamento profissional,Confirmado,2026-07-01 09:00:00,Equipe MAP
-appt_item_004_1,appt_004_1,pat_004,orc_004,Sessão de acompanhamento,Acompanhamento profissional,Atrasado,2026-06-22 08:00:00,Equipe MAP
-appt_item_004_2,appt_004_2,pat_004,orc_004,Sessão de acompanhamento,Acompanhamento profissional,Atrasado,2026-07-02 09:00:00,Equipe MAP
-appt_item_005_1,appt_005_1,pat_005,orc_005,Sessão de acompanhamento,Acompanhamento profissional,Atendido,2026-06-23 08:00:00,Equipe MAP
-appt_item_005_2,appt_005_2,pat_005,orc_005,Sessão de acompanhamento,Acompanhamento profissional,Atendido,2026-07-03 09:00:00,Equipe MAP
-appt_item_006_1,appt_006_1,pat_006,orc_006,Sessão de acompanhamento,Acompanhamento profissional,Cancelado,2026-06-24 08:00:00,Equipe MAP
-appt_item_006_2,appt_006_2,pat_006,orc_006,Sessão de acompanhamento,Acompanhamento profissional,Cancelado,2026-07-04 09:00:00,Equipe MAP
-appt_item_007_1,appt_007_1,pat_007,orc_007,Sessão de acompanhamento,Acompanhamento profissional,Confirmado,2026-06-25 08:00:00,Equipe MAP
-appt_item_007_2,appt_007_2,pat_007,orc_007,Sessão de acompanhamento,Acompanhamento profissional,Confirmado,2026-07-05 09:00:00,Equipe MAP
-appt_item_008_1,appt_008_1,pat_008,orc_008,Sessão de acompanhamento,Acompanhamento profissional,Reagendado,2026-06-26 08:00:00,Equipe MAP
-appt_item_008_2,appt_008_2,pat_008,orc_008,Sessão de acompanhamento,Acompanhamento profissional,Reagendado,2026-07-06 09:00:00,Equipe MAP

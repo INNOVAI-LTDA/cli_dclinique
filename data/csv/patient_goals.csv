@@ -1,9 +1,1 @@
 goal_id,patient_id,plan_id,goal_type,initial_weight,target_weight,target_date,goal_notes
-goal_001,pat_001,plan_001,Emagrecimento,82.0,74.0,2026-08-09,Boa adesão e satisfação alta.
-goal_002,pat_002,plan_002,Início de protocolo,91.0,84.0,2026-08-14,Procedimento ainda não iniciado.
-goal_003,pat_003,plan_003,Manipulado pendente,76.0,71.0,2026-08-04,Manipulado pendente de validação manual.
-goal_004,pat_004,plan_004,Emagrecimento,104.0,95.0,2026-07-30,Baixo engajamento e insatisfação.
-goal_005,pat_005,plan_005,Controle metabólico,68.0,64.0,2026-08-19,Alta presença com satisfação baixa.
-goal_006,pat_006,plan_006,Acompanhamento nutricional,88.0,82.0,2026-08-24,"Satisfeito, mas com baixa presença."
-goal_007,pat_007,plan_007,Renovação de plano,73.0,69.0,2026-07-04,Renovação próxima.
-goal_008,pat_008,plan_008,Revisão de peso,80.0,75.0,2026-07-21,Sem peso atualizado.

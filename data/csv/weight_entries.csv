@@ -1,16 +1,1 @@
 weight_id,patient_id,plan_id,measurement_date,weight,source,notes
-w_001_001,pat_001,plan_001,2026-05-21,82.0,Dados manuais,Peso inicial fictício
-w_001_002,pat_001,plan_001,2026-06-20,77.8,Dados manuais,Último peso fictício
-w_002_001,pat_002,plan_002,2026-05-21,91.0,Dados manuais,Peso inicial fictício
-w_002_002,pat_002,plan_002,2026-06-20,88.5,Dados manuais,Último peso fictício
-w_003_001,pat_003,plan_003,2026-05-21,76.0,Dados manuais,Peso inicial fictício
-w_003_002,pat_003,plan_003,2026-06-20,74.4,Dados manuais,Último peso fictício
-w_004_001,pat_004,plan_004,2026-05-21,104.0,Dados manuais,Peso inicial fictício
-w_004_002,pat_004,plan_004,2026-06-20,103.1,Dados manuais,Último peso fictício
-w_005_001,pat_005,plan_005,2026-05-21,68.0,Dados manuais,Peso inicial fictício
-w_005_002,pat_005,plan_005,2026-06-20,65.8,Dados manuais,Último peso fictício
-w_006_001,pat_006,plan_006,2026-05-21,88.0,Dados manuais,Peso inicial fictício
-w_006_002,pat_006,plan_006,2026-06-20,86.9,Dados manuais,Último peso fictício
-w_007_001,pat_007,plan_007,2026-05-21,73.0,Dados manuais,Peso inicial fictício
-w_007_002,pat_007,plan_007,2026-06-20,70.2,Dados manuais,Último peso fictício
-w_008_001,pat_008,plan_008,2026-05-21,80.0,Dados manuais,Peso inicial fictício
