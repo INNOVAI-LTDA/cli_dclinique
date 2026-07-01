@@ -687,3 +687,33 @@
   Chamada idempotente. Safe para Linux/Mac onde ja' e' UTF-8. `reconfigure()` foi adicionado em Python 3.7 (`io.TextIOWrapper`).
 - **Lição:** **Scripts CLI que produzem PT-BR DEVEM forcar UTF-8 em stdout/stderr no Windows.** Padrao permanente para qualquer novo script em `scripts/` que produza mensagens PT-BR. Documentado em `docs/exception_catalog.md §1 (encoding)`. **Superseded by:** (nenhuma — padrao permanente).
 - **Cross-ref:** `[[scripts/validate_end_to_end.py]]` `[[docs/exception_catalog.md §1 (UnicodeDecodeError)]]`
+
+### [2026-06-30] Fase 0 do MVP Jornada Clínica — pivot de premissa antes do código
+
+- **Categoria:** `process` (N8 — padrão permanente para decisões arquiteturais que mudam escopo de worktree)
+- **Status:** `decided` (decisão registrada, executada parcialmente nesta sessão)
+- **Componente:** worktree `feature-supporthealthDB-clone` (a renomear) — escopo virou MVP "Jornada Clínica"
+- **Teste:** N/A — decisão de processo, não código
+- **Causa raiz (motivação):** A worktree foi aberta em 2026-06-30 com premissa de "espelhar SupportHealth para alimentar o MAP". A reunião de 2026-06-30 21:25 (Diego + Jader) **recusou explicitamente a premissa** via decisão D1: *"Evitar espelhar o sistema inteiro. Usar apenas os dados necessários para controle da jornada; dados poluídos ficam fora do MVP."* Complementado por §10 (Fora do MVP): *"Espelhar todas as telas e dados do sistema atual"*. Resultado: worktree passa a operar com escopo PDF + Excel + catálogo + alertas com justificativa, sem `pg_dump`, sem CDC, sem `read-replica`.
+- **Resolução aplicada:**
+  1. CLAUDE.md atualizado (M1) — parser Excel promovido a exceção do Cliente (linha 7 da seção Projecto + linha 102 da seção Restrições de escopo).
+  2. Memória `supporthealth-clone-worktree.md` reescrita com STATUS "PREMISSA RECUSADA PELO CLIENTE" preservando histórico original.
+  3. Memória `mvp-jornada-clinica-2026-06-30.md` criada consolidando D1–D10, Q1–Q9, glossário, matriz de alertas, 8 fases.
+  4. `MEMORY.md` índice atualizado com link para a nova memória.
+  5. `docs/cliente_reuniao_2026-06-30.md` (ata estruturada) e `docs/mvp_plano.md` (plano de 8 fases) criados.
+  6. `docs/phase_reports/mvp_phase_0_report.md` (N9 — 9 métricas) produzido.
+  7. `docs/exception_catalog.md` recebe §12 (openpyxl), §13 (pandas aplicado ao Excel), §14 (psycopg já catalogado).
+  8. Worktree renomeação pendente (M2) — aguarda confirmação sobre handle do Windows/VS Code.
+- **Lição:** **(1) Pivot de premissa antes de Fase 1 é barato** — como ainda não havia código, custo principal foi admin. **(2) Memória é o pivot mais barato** — atualizar memória primeiro (M3) e docs depois (M4) reduz risco de escrever docs com premissa errada. **(3) CLAUDE.md é fonte única de restrições** — adicionar Excel parser lá (M1) alinhou o time conceitualmente antes do código nascer. **(4) Naming de worktree deve ser conservador** — `feature-supporthealthDB-clone` ficou legado após D1; teria sido melhor validar escopo da worktree **antes** de nomeá-la. Padrão para próxima worktree: nome neutro (`wip-cliente-data` ou nome do MVP), renomear se a premissa se mantiver.
+- **Cross-ref:** `[[docs/cliente_reuniao_2026-06-30.md]]` `[[docs/mvp_plano.md]]` `[[../../supporthealth-clone-worktree]]` `[[../../mvp-jornada-clinica-2026-06-30]]` `[[docs/phase_reports/mvp_phase_0_report.md]]` `[[docs/exception_catalog.md §12]]` `[[CLAUDE.md]]` (M1)
+
+### [2026-06-30] Fase 0 do MVP Jornada Clínica — `git worktree move` bloqueado por handle do Windows (M2 parcial)
+
+- **Categoria:** `process` (N8 — padrão permanente para lidar com worktree ops em Windows)
+- **Status:** `partial` (branch renomeado; diretório pendente)
+- **Componente:** worktree em `C:/Users/dmene/Projetos/innovai/git/cli_dclinique/.claude/worktrees/feature-supporthealthDB-clone` (diretório) + branch `worktree-feature-jornada-clinica` (renomeado)
+- **Teste:** `git -C main-repo worktree list` + `cd <dir> && git branch --show-current`
+- **Causa raiz (se falha):** `git worktree move` retornou `Permission denied`. Mesma root cause da memória `windows-vscode-worktree-lock`: o diretório da worktree tem handle aberto por algum processo (provavelmente esta sessão Claude com CWD lockado + eventual janela VS Code). `git worktree move --force` também falhou com o mesmo erro. O Windows não permite `MoveFileEx` em diretório com handle.
+- **Resolução aplicada:** rename do branch apenas (`git branch -m worktree-feature-supporthealthDB-clone worktree-feature-jornada-clinica`) — funcionou porque só toca em metadata do git, não em filesystem. Estado final é internamente consistente: `path=feature-supporthealthDB-clone` + `branch=worktree-feature-jornada-clinica`. Git aceita esse mismatch (path é apenas metadata do worktree). Documentado em `docs/phase_reports/mvp_phase_0_report.md` pendência M2.
+- **Lição:** **Quando M2 (rename worktree) esbarra em handle do Windows: separar em 2 fases.** (1) Branch rename (sempre funciona, é metadata). (2) Directory rename (precisa de sessão livre). Padrão permanente: ao abrir nova worktree via Claude Code, se houver intenção de renomear, fazer o directory rename **antes** de a sessão Claude ser iniciada (CWD locka o diretório). **Alternativa futura:** se vai haver rename, abrir a worktree com nome já correto via `EnterWorktree` — não usar a worktree `feature-supporthealthDB-clone` que ficou órfã de premissa. **Superseded by:** (nenhuma — heurística "branch rename parcial funciona, directory rename precisa de sessão livre" é permanente).
+- **Cross-ref:** `[[windows-vscode-worktree-lock]]` `[[docs/phase_reports/mvp_phase_0_report.md]]` (M2 pendência)
