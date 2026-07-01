@@ -1,0 +1,12 @@
+service_code,name,classification,category,default_periodicity_days,source,created_at
+MORPHEUS_FORMA_V,Morpheus - FORMA V,active,professional,30,lista_ativa,2026-06-01
+BOTOX_FULL_FACE,Botox Full Face,active,injectable,7,lista_ativa,2026-06-01
+PEELING_QUIMICO,Peeling Químico,active,professional,30,lista_ativa,2026-06-01
+CONSULTA_RETORNO,Consulta Retorno,active,professional,30,lista_ativa,2026-06-01
+AVALIACAO_NUTRO,Avaliação Nutrológica,active,other,90,lista_ativa,2026-06-01
+HIDROGEL_RASTRO,Hidrogel Rastro,rare,injectable,7,lista_ativa,2026-06-01
+SORO_VITAMINA_C_OLD,Soro Vitamina C (legado),obsolete,injectable,7,lista_ativa,2026-06-01
+EXAME_SANGUE,Exame de Sangue,active,other,180,dane,2026-06-15
+DERMATO_PED,Dramaturgia Pediátrica,rare,,,dane,2026-06-15
+,,active,professional,30,lista_ativa,2026-06-01
+VALID_PERIODIC,Periodicidade Invalida,active,professional,7.5,lista_ativa,2026-06-01

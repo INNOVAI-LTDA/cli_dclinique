@@ -4,6 +4,7 @@ SIDEBAR_PAGES = [
     "Visão Geral",
     "Mapa de Decisão",
     "Pacientes",
+    "Catálogo de Serviços",
     "Alertas",
     "Atualização de Dados",
     "Qualidade dos Dados",

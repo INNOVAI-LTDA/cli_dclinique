@@ -687,3 +687,191 @@
   Chamada idempotente. Safe para Linux/Mac onde ja' e' UTF-8. `reconfigure()` foi adicionado em Python 3.7 (`io.TextIOWrapper`).
 - **Lição:** **Scripts CLI que produzem PT-BR DEVEM forcar UTF-8 em stdout/stderr no Windows.** Padrao permanente para qualquer novo script em `scripts/` que produza mensagens PT-BR. Documentado em `docs/exception_catalog.md §1 (encoding)`. **Superseded by:** (nenhuma — padrao permanente).
 - **Cross-ref:** `[[scripts/validate_end_to_end.py]]` `[[docs/exception_catalog.md §1 (UnicodeDecodeError)]]`
+
+### [2026-06-30] Fase 0 do MVP Jornada Clínica — pivot de premissa antes do código
+
+- **Categoria:** `process` (N8 — padrão permanente para decisões arquiteturais que mudam escopo de worktree)
+- **Status:** `decided` (decisão registrada, executada parcialmente nesta sessão)
+- **Componente:** worktree `feature-supporthealthDB-clone` (a renomear) — escopo virou MVP "Jornada Clínica"
+- **Teste:** N/A — decisão de processo, não código
+- **Causa raiz (motivação):** A worktree foi aberta em 2026-06-30 com premissa de "espelhar SupportHealth para alimentar o MAP". A reunião de 2026-06-30 21:25 (Diego + Jader) **recusou explicitamente a premissa** via decisão D1: *"Evitar espelhar o sistema inteiro. Usar apenas os dados necessários para controle da jornada; dados poluídos ficam fora do MVP."* Complementado por §10 (Fora do MVP): *"Espelhar todas as telas e dados do sistema atual"*. Resultado: worktree passa a operar com escopo PDF + Excel + catálogo + alertas com justificativa, sem `pg_dump`, sem CDC, sem `read-replica`.
+- **Resolução aplicada:**
+  1. CLAUDE.md atualizado (M1) — parser Excel promovido a exceção do Cliente (linha 7 da seção Projecto + linha 102 da seção Restrições de escopo).
+  2. Memória `supporthealth-clone-worktree.md` reescrita com STATUS "PREMISSA RECUSADA PELO CLIENTE" preservando histórico original.
+  3. Memória `mvp-jornada-clinica-2026-06-30.md` criada consolidando D1–D10, Q1–Q9, glossário, matriz de alertas, 8 fases.
+  4. `MEMORY.md` índice atualizado com link para a nova memória.
+  5. `docs/cliente_reuniao_2026-06-30.md` (ata estruturada) e `docs/mvp_plano.md` (plano de 8 fases) criados.
+  6. `docs/phase_reports/mvp_phase_0_report.md` (N9 — 9 métricas) produzido.
+  7. `docs/exception_catalog.md` recebe §12 (openpyxl), §13 (pandas aplicado ao Excel), §14 (psycopg já catalogado).
+  8. Worktree renomeação pendente (M2) — aguarda confirmação sobre handle do Windows/VS Code.
+- **Lição:** **(1) Pivot de premissa antes de Fase 1 é barato** — como ainda não havia código, custo principal foi admin. **(2) Memória é o pivot mais barato** — atualizar memória primeiro (M3) e docs depois (M4) reduz risco de escrever docs com premissa errada. **(3) CLAUDE.md é fonte única de restrições** — adicionar Excel parser lá (M1) alinhou o time conceitualmente antes do código nascer. **(4) Naming de worktree deve ser conservador** — `feature-supporthealthDB-clone` ficou legado após D1; teria sido melhor validar escopo da worktree **antes** de nomeá-la. Padrão para próxima worktree: nome neutro (`wip-cliente-data` ou nome do MVP), renomear se a premissa se mantiver.
+- **Cross-ref:** `[[docs/cliente_reuniao_2026-06-30.md]]` `[[docs/mvp_plano.md]]` `[[../../supporthealth-clone-worktree]]` `[[../../mvp-jornada-clinica-2026-06-30]]` `[[docs/phase_reports/mvp_phase_0_report.md]]` `[[docs/exception_catalog.md §12]]` `[[CLAUDE.md]]` (M1)
+
+### [2026-06-30] Fase 0 do MVP Jornada Clínica — `git worktree move` bloqueado por handle do Windows (M2 parcial)
+
+- **Categoria:** `process` (N8 — padrão permanente para lidar com worktree ops em Windows)
+- **Status:** `partial` (branch renomeado; diretório pendente)
+- **Componente:** worktree em `C:/Users/dmene/Projetos/innovai/git/cli_dclinique/.claude/worktrees/feature-supporthealthDB-clone` (diretório) + branch `worktree-feature-jornada-clinica` (renomeado)
+- **Teste:** `git -C main-repo worktree list` + `cd <dir> && git branch --show-current`
+- **Causa raiz (se falha):** `git worktree move` retornou `Permission denied`. Mesma root cause da memória `windows-vscode-worktree-lock`: o diretório da worktree tem handle aberto por algum processo (provavelmente esta sessão Claude com CWD lockado + eventual janela VS Code). `git worktree move --force` também falhou com o mesmo erro. O Windows não permite `MoveFileEx` em diretório com handle.
+- **Resolução aplicada:** rename do branch apenas (`git branch -m worktree-feature-supporthealthDB-clone worktree-feature-jornada-clinica`) — funcionou porque só toca em metadata do git, não em filesystem. Estado final é internamente consistente: `path=feature-supporthealthDB-clone` + `branch=worktree-feature-jornada-clinica`. Git aceita esse mismatch (path é apenas metadata do worktree). Documentado em `docs/phase_reports/mvp_phase_0_report.md` pendência M2.
+- **Lição:** **Quando M2 (rename worktree) esbarra em handle do Windows: separar em 2 fases.** (1) Branch rename (sempre funciona, é metadata). (2) Directory rename (precisa de sessão livre). Padrão permanente: ao abrir nova worktree via Claude Code, se houver intenção de renomear, fazer o directory rename **antes** de a sessão Claude ser iniciada (CWD locka o diretório). **Alternativa futura:** se vai haver rename, abrir a worktree com nome já correto via `EnterWorktree` — não usar a worktree `feature-supporthealthDB-clone` que ficou órfã de premissa. **Superseded by:** (nenhuma — heurística "branch rename parcial funciona, directory rename precisa de sessão livre" é permanente).
+- **Cross-ref:** `[[windows-vscode-worktree-lock]]` `[[docs/phase_reports/mvp_phase_0_report.md]]` (M2 pendência)
+- **Superseded by (addendum 2026-07-01):** entrada `[2026-07-01] MVP Jornada Clínica — M2 (rename do diretório) RESOLVIDA na sessão de retomada`. Status da M2 saiu de `partial` → `passed` (VS Code/sessão livre destravou o `git worktree move`). Lição heurística permanece válida para worktrees futuras.
+
+### [2026-06-30] Fase 1 do MVP Jornada Clínica — schema-first antes de dados do Cliente
+
+- **Categoria:** `process` (N8 — padrão permanente para desacoplar dev do timing do Cliente)
+- **Status:** `decided` (executada)
+- **Componente:** fase inteira — schemas + módulo `src/service_catalog/` + CLI + UI + testes + docs
+- **Teste:** N/A — decisão de processo
+- **Causa raiz (motivação):** O plano MVP (`docs/mvp_plano.md`) lista Fase 1 como "dependente de Jader enviar lista ativa + lista da Dane". Mas esperar o Jader atrasa o time — schemas podem ser definidos antes; entrada de dados é, no pior caso, mock para dev. Decisão: criar o esqueleto completo (schemas no `EXPECTED_SCHEMAS` + 2 CSVs header-only + módulo `src/service_catalog/` com 5 arquivos + CLI `scripts/import_service_catalog.py` + página read-only `src/pages/catalogo_servicos.py` + 19 testes) **antes** do Jader enviar os CSVs.
+- **Resolução aplicada:** Tudo acima foi entregue. CSVs estão com header only (zero linhas); módulo e testes funcionam contra esse estado vazio. Quando Jader enviar lista ativa + lista da Dane, basta rodar `python scripts/import_service_catalog.py --csv <arquivo> --source lista_ativa|dane` e a UI read-only passa a refletir os dados. UPSERT é idempotente, então re-envios não corrompem.
+- **Lição:** **Schema-first desacopla o dev do timing do Cliente.** Custo de fazer o esqueleto antes dos dados é fixo (≈50 min nesta fase); benefício é que a Fase 2 (parser PDF) já pode chamar `enqueue_unknown_service()` para a fila de revisão sem esperar Jader. **Padrão permanente:** para qualquer feature que dependa de dados externos, criar schema + módulo + UI vazia primeiro; integrar dados quando chegarem. **Cross-ref:** `[[docs/mvp_plano.md]]` `[[docs/phase_reports/mvp_phase_1_report.md]]` `[[src/service_catalog/]]` `[[scripts/import_service_catalog.py]]` `[[src/pages/catalogo_servicos.py]]`
+
+### [2026-06-30] Fase 1 do MVP Jornada Clínica — idempotência por nome normalizado na fila de revisão
+
+- **Categoria:** `code` (N8 — padrão permanente para idempotência em filas incrementais)
+- **Status:** `passed` (testes `test_enqueue_unknown_service_*` cobrem)
+- **Componente:** `src/service_catalog/review_queue.py::enqueue_unknown_service` + `_normalize_service_name`
+- **Teste:** `tests/test_service_catalog.py::test_enqueue_unknown_service_increments_with_normalization` — `"Morpheus Variante"` (inserted) + `"  morpheus   variante  "` (incremented, mesmo id).
+- **Causa raiz (motivação):** `service_review_queue` é fila incremental — o mesmo serviço pode aparecer várias vezes no Excel/PDF antes de ser classificado (ex.: Botox aparece em 5 sessoes do mesmo paciente). Sem idempotência, fila explode com N linhas idênticas. Re-rodar o importer 2x no mesmo PDF também precisa ser idempotente.
+- **Resolução aplicada:** Função `_normalize_service_name(name) = " ".join(name.strip().lower().split())` — lowercase + trim + colapsa whitespace múltiplo mas **mantém acentos** (decisão Caminho B Fase 6). Em `enqueue_unknown_service`, depois de carregar a fila, busca `pending` com nome normalizado igual:
+  - Encontrou → `update_row(occurrences=current+1, last_seen_at=now)` → retorna `action="incremented"`.
+  - Não encontrou → `append_row` novo id → retorna `action="inserted"`.
+  - Já existe como `classified` ou `ignored` → retorna `action="skipped"` (assume decisão já tomada).
+  - String vazia → retorna `action="skipped"`.
+- **Lição:** **Filas incrementais SEMPRE precisam de idempotência por chave normalizada.** Sem ela, qualquer re-run do importer duplica linhas. Padrão permanente: ao criar fila de revisão, sempre (1) normalizar chaves de matching (lowercase + trim + collapse), (2) incrementar em vez de duplicar quando já existe, (3) nunca levantar exceção do caminho normal (retornar result type com `action`). **Cross-ref:** `[[src/service_catalog/review_queue.py]]` `[[tests/test_service_catalog.py]]` `[[src/csv_importer/parse.py::normalize_name]]` (mesma decisão sobre manter acentos)
+
+### [2026-06-30] Fase 1 do MVP Jornada Clínica — UPSERT CSV vs Postgres: paridade via `get_service()` antes de `append_row()`
+
+- **Categoria:** `code` (N8 — padrão permanente para UPSERT em data layers sem ON CONFLICT)
+- **Status:** `documented` (debt técnica aceita — Fase 5 cobre)
+- **Componente:** `src/service_catalog/persist.py::upsert_service`
+- **Teste:** `tests/test_service_catalog.py::test_upsert_inserts_then_updates` + `test_upsert_keeps_original_created_at` (cobrem CSV backend; Postgres backend não tem testes nesta fase)
+- **Causa raiz:** UPSERT genuíno precisa de `INSERT ... ON CONFLICT (service_code) DO UPDATE` no Postgres. O data layer `postgres_backend.py` foi implementado com `append_row` simples (sem ON CONFLICT) na Fase Neon preexistente. Adicionar ON CONFLICT agora exigiria mudar a API de `append_row` (que é compartilhada com 11 outras tabelas, incluindo seed de patients).
+- **Resolução aplicada:** Em `upsert_service`:
+  1. `existing = get_service(entry.service_code)` — lê o `service_catalog` atual.
+  2. Se `existing is None` → `append_row(...)` (funciona em CSV e Postgres).
+  3. Se `existing is not None` → `update_row(..., updates)` (funciona em CSV; **NO Postgres, vai criar nova linha em vez de atualizar** — debt aceita).
+  - `get_service` tem try/except em `load_table`, retorna `None` se backend falhar (N7).
+  - Docstring do `persist.py` e do `upsert_service` avisam: "UPDATE não está implementado no data layer para service_catalog — quando Jader precisar RE-classificar, a Fase 1 não cobre. Cobre na Fase 5 (junto com o CRUD de alertas)."
+- **Lição:** **Para feature nova que precisa de UPSERT em ambos os backends, o caminho mais barato é `get + append OR update` em vez de mexer no data layer.** Custo: precisa chamar `get_service` antes de cada write (1 read extra). Benefício: zero alteração em API compartilhada com 11 tabelas. Limitação: NO Postgres, UPDATE vira INSERT duplicado (debt). **Padrão permanente:** enquanto Postgres backend não tiver ON CONFLICT genérico, qualquer UPSERT novo deve usar esse padrão `get + branch`, e a Fase 5 fica dona de unificar tudo via `INSERT ... ON CONFLICT`. **Cross-ref:** `[[src/service_catalog/persist.py]]` `[[src/data_layer/postgres_backend.py]]` (Fase Neon) `[[docs/mvp_plano.md]]` (Fase 5)
+
+---
+
+## Sessão de retomada 2026-07-01
+
+<!-- Entradas da sessão de retomada vão aqui, em ordem cronológica inversa -->
+
+### [2026-07-01] MVP Jornada Clínica — M2 (rename do diretório) RESOLVIDA na sessão de retomada
+
+- **Categoria:** `process` (N8 — M2 da execução autorizada em 2026-06-30)
+- **Status:** `passed` (resolvido pelo usuário — IA apenas documenta)
+- **Componente:** worktree em `C:/Users/dmene/Projetos/innovai/git/cli_dclinique/.claude/worktrees/feature-jornada-clinica/` (diretório) + branch `worktree-feature-jornada-clinica` (já estava renomeada desde 2026-06-30 23:34)
+- **Teste:** `git -C main-repo worktree list` (saída: `feature-jornada-clinica  2b56188  [worktree-feature-jornada-clinica]`) — confirma path + branch alinhados
+- **Causa raiz (contexto histórico):** A entrada parcial de 2026-06-30 documentou que `git worktree move` falhou com `Permission denied` (mesma root cause de [[windows-vscode-worktree-lock]]). Naquela sessão, apenas o branch foi renomeado; diretório ficou órfão de nome (`feature-supporthealthDB-clone`).
+- **Resolução aplicada (pelo usuário, em 2026-07-01):** VS Code/sessão Claude foram fechados antes da operação, removendo o handle do Windows que bloqueava o `MoveFileEx`. `git worktree move` rodou limpo. Estado final: `path=feature-jornada-clinica` + `branch=worktree-feature-jornada-clinica`. Documentado em [[../../supporthealth-clone-worktree]] (seção Status) e em [[../../mvp-jornada-clinica-2026-06-30]] (seção Status 2026-07-01).
+- **Lição:** **A heurística da entrada parcial ("branch rename funciona sempre; directory rename precisa de sessão livre") se confirmou.** Mesmo padrão observado em [[windows-vscode-worktree-lock]]: separar o rename em 2 fases (branch primeiro, diretório depois) funciona como plano B estrutural — só destrava quando o agente externo (VS Code/sessão Claude) liberar o handle. **Superseded by:** entrada parcial de 2026-06-30 ("M2 parcial") — a presente entrada confirma a resolução (addendum `**Superseded by:**` adicionado à entrada anterior por aderência à política N8 append-only).
+- **Cross-ref:** [[../../supporthealth-clone-worktree]] (Status 2026-07-01) [[../../mvp-jornada-clinica-2026-06-30]] (Status 2026-07-01) [[windows-vscode-worktree-lock]] (root cause) `[[docs/phase_reports/mvp_phase_0_report.md]]` (M2 saiu da lista de pendências)
+
+---
+
+## Validação runtime + correções 2026-07-01
+
+<!-- Entradas da validação runtime da Fase 1 vão aqui, em ordem cronológica inversa (mais recente primeiro) -->
+
+### [2026-07-01] Fase 1 do MVP Jornada Clínica — 3 bugs encontrados na validação runtime (sidebar KeyError + teste do parser + idempotência incompleta)
+
+- **Categoria:** `code` (3 bugs: 1 `tooling` sidebar, 1 `test` parser, 1 `code` review_queue)
+- **Status:** `failed → passed` (3 correções aplicadas em 2026-07-01; aguardando re-rodada do usuário para confirmar)
+- **Componentes:**
+  - `src/components/sidebar.py::PAGE_ICONS` (linhas 17-24) — esqueceu de adicionar ícone de "Catálogo de Serviços"
+  - `tests/test_service_catalog.py::test_parse_catalog_csv_returns_entries` (linhas 80-91) — assertion `len == 9` mas o parser retorna 10 (comportamento correto)
+  - `src/service_catalog/review_queue.py::enqueue_unknown_service` (linhas 140-225) — branch "já decidida" ausente (docstring prometia, código não implementava)
+- **Teste:** `pwsh scripts/run_core_tests.ps1 -VenvDir ../../../.venv` em 2026-07-01 11:14:35 → **337/356 passed, 19 failed**. Logs: `logs/test_core_20260701-111435.{log,json}`. Resultado do jq `.summary`: `{passed: 337, failed: 19, total: 356, exitcode: 1}`.
+- **Causa raiz (3 distintas):**
+  1. **Sidebar (KeyError):** A Fase 1 adicionou "Catálogo de Serviços" em `navigation.py::SIDEBAR_PAGES` (linha 7) e em `app.py::_PAGE_MODULES` (registro de módulo), mas **esqueceu o ícone em `sidebar.py::PAGE_ICONS`** (linhas 17-24). `_render_nav_html` (linha 81) faz lookup direto `PAGE_ICONS[page]` sem fallback → KeyError quebra toda renderização do app. AppTest captura a exception por teste, mas o teste subsequente (que depende do estado renderizado) falha. Efeito cascata: 17 testes em `tests/test_integration.py` quebraram, todos com o mesmo `assert []` ("Cadastrar button not found") porque a sidebar nunca renderizou.
+  2. **Parser vs teste (10 vs 9):** O parser está **correto**. Linha 10 do fixture (`DERMATO_PED,Dramaturgia Pediátrica,rare,,,dane,2026-06-15`) tem `service_code` e `name` válidos, então gera entry com `category=None` e `default_periodicity_days=None` (regras do parser: categoria vazia vira `None` mas não pula a linha; só pula se `service_code` ou `name` estiverem vazios). Contagem real: 11 linhas de dados no fixture → 1 pulada (linha 11, service_code vazio) + 10 entries válidas (linhas 2-10, 12). **O teste estava errado** — assertion `len(result.entries) == 9` deveria ser `== 10`. Causa: autor (IA na sessão anterior) subestimou a contagem ao escrever o teste sem rodar contra o fixture — mesma lição meta da Fase 3 ("smoke checks locais NÃO pegam tudo").
+  3. **Idempotência incompleta (inserted vs skipped):** `enqueue_unknown_service` tinha 2 branches: (1) `_find_pending_by_name` → incrementa, (2) senão → append. O docstring (linhas 17-20) promete "Se existe com `status=classified` ou `ignored`, nao faz nada (assume que a equipe já decidiu)", mas o código não implementa essa verificação. Resultado: entry classificada → entra no branch (2) → `action="inserted"` (duplicado). Causa: docstring foi escrita como spec, mas a transcrição docstring → código perdeu o terceiro branch. O teste `test_enqueue_unknown_service_skips_when_already_classified` foi escrito mas não pegou o bug antes do commit porque... **na verdade, pegaria se tivesse sido rodado** — o teste estava lá desde o commit `2b56188`, mas a validação runtime não foi rodada naquela sessão (regra do `testing-workflow-with-logs`: usuário roda).
+- **Resolução aplicada (3 fixes):**
+  1. **`sidebar.py`:** adicionado `"Catálogo de Serviços": "14_arquivo_documento.svg"` em `PAGE_ICONS` (mantendo ordem visual de `SIDEBAR_PAGES`). Escolhi `14_arquivo_documento.svg` em vez de `07_info.svg` porque semanticamente "lista de documentos catalogados" casa melhor com "Catálogo". Não há SVG específico para catálogo em `data/images/icones_Croquis_SVG/` (vai de `00_preview_grid` a `17_atualizar_agora`, com 07_info e 14_arquivo_documento como candidatos mais próximos).
+  2. **`test_service_catalog.py`:** assertion `len(result.entries) == 9` → `== 10`; docstring atualizada para `"retorna 10 entries validas + 1 skipped"`; comentário inline reescrito (era "2 linhas puladas" errado, agora "1 linha pulada: row vazia (sem service_code)"); `rows_skipped >= 1` → `rows_skipped == 1` (mais estrito, surface regressões futuras se a heurística defensiva mudar).
+  3. **`review_queue.py`:** novo branch `# 0)` antes do branch `# 1)` (decrementa para manter ordem de checagem: "decidido > pending > novo"). Verifica `classified`/`ignored` com mesmo nome normalizado. Se encontrado, retorna `EnqueueResult(action="skipped", review_id=None)` + log PT-BR `"review_queue: pulado %r (ja' decidido anteriormente)"`. Padrão defensivo igual a `_find_pending_by_name` (check de `df.empty` e colunas `"service_name"`/`"status"` antes de filtrar).
+- **Lição (3 permanentes):**
+  1. **Adicionar página = 3 lugares, não 2.** Sidebar (`PAGE_ICONS`) + Navigation (`SIDEBAR_PAGES`) + Routing (`_PAGE_MODULES`). Lição vinda da Fase 7 do Caminho B ("adicionar caso de teste = 3 lugares": implementation + tests + docs) — o mesmo padrão se aplica aqui: adicionar feature nova = N lugares, e esquecer 1 quebra o sistema todo. **Padrão para Fase 2+:** criar um helper `register_page(name, icon, module)` em `navigation.py` que adiciona aos 3 mapas de uma vez. Refactor pequeno; elimina a classe de bug. **Aplica também ao adicionar Fase 6 (CRUD da fila):** quando a UI de revisão ganhar botões "Classificar"/"Ignorar", eles vão entrar em 3 lugares também (página + navegação + roteamento).
+  2. **Teste de contagem precisa de contagem manual prévia.** Não dá pra escrever `assert len(...) == N` sem antes rodar o parser e confirmar N. Mesma lição da Fase 6 do Caminho B ("smoke E2E NAO pega tudo — bug do `parse_br_date_range` passou no smoke que validava só `.hour`"). **Padrão para Fase 2+ (fixture-driven tests):** ao criar fixture CSV de teste, rodar 1 smoke E2E inline (`python -c "from src.x import parse; print(len(parse('fixture.csv').entries))"`) e usar o número real na assertion. **Heurística geral:** NUNCA escrever `assert len == <número mágico>` sem 1 linha de print() anterior que confirme `<número mágico>`. Se o fixture mudar, atualizar assertion + print juntos.
+  3. **Docstring como spec precisa de teste que cubra a spec.** Se o docstring promete comportamento X, tem que ter teste explícito para X. Aqui, o teste `test_enqueue_unknown_service_skips_when_already_classified` existia mas o código não implementava o branch — ficou como teste "vermelho" latente que **nunca foi rodado** (regra `testing-workflow-with-logs`: usuário roda). **Padrão para Fase 2+:** ao escrever docstring com cláusulas condicionais ("Se X então Y", "Se status é Z então W"), garantir 1 teste explícito para CADA cláusula. **Heurística geral:** contar quantas cláusulas "Se..." tem na docstring e contar quantos testes cobrem cada cláusula — a contagem tem que bater.
+- **Cross-ref:** `[[docs/phase_reports/mvp_phase_1_report.md]]` (seção "Pós-validação runtime 2026-07-01") `[[src/components/sidebar.py]]` `[[tests/test_service_catalog.py]]` `[[src/service_catalog/review_queue.py]]` `[[docs/exception_catalog.md §1]]` (Encoding do mojibake `Catálogo` no log capturava `` mas o arquivo é UTF-8 — já coberto)
+
+---
+
+## Fase 2 — PDF importer estendido (2026-07-01)
+
+<!-- Entradas de progresso da Fase 2 em ordem cronológica inversa (mais recente primeiro) -->
+
+### [2026-07-01] Fase 2 — diagnóstico pré-implementação: ~60% já estava pronto de outras fases
+
+- **Categoria:** `discovery` (escopo pré-definido já parcialmente coberto)
+- **Status:** `analisado` (informativo, sem código)
+- **Achado:** Ao começar a Fase 2 do MVP (`src/pdf_importer/quantity.py` + `frequency.py` + `split.py`), descobri que **a maior parte do trabalho já estava implementado** em sessões anteriores (junho/2026, pós-entrega da ficha do paciente):
+  - **`sessions_expected`** já é extraído em `data/import_zones/default.json` v2.0 zone `procedimentos` (regex `(\d+)\s*sess(?:[ãáa]o|[õoó]es)` + `_norm_int`).
+  - **`frequency_type`** já é normalizado em `src/pdf_importer/parse.py::_norm_frequency_type` (linhas 130-148) com `_FREQUENCY_TYPE_TOKENS` cobrindo Semanal/Quinzenal/Diário/Mensal/Dose única.
+  - **`frequency_type` já é projetado** para `execution_summary` em `src/pdf_importer/persist.py::_build_execution_row` (linha 139) e para `treatment_plan_items` em `_build_item_row` (linha 219).
+  - **Wizard dropdown** já tem `FREQUENCY_OPTIONS` com 9 valores canônicos (`tests/test_pdf_wizard_ui.py:330-344`).
+  - **Testes do round-trip** (`test_pdf_persist_projection.py`, `test_pdf_wizard_ui.py`) já cobrem insert + replace path.
+  - **Inferência de categoria** já existe em `_infer_category` (8 categorias).
+- **O que de fato FALTAVA** (verificado por grep no schema e no zone config):
+  - `periodicity_days` não existia no schema nem era derivado de `frequency_type` — esse era o gap real.
+  - Split por vírgula (D5) não estava implementado — composite descriptions viravam 1 row.
+  - Função pura `parse_quantity` para reuso em testes sem PDF.
+- **Decisão de escopo:** Fase 2 ficou em 3 módulos puros + 1 coluna nova + 3 testes, em vez de re-escrever o que já funcionava.
+- **Lição (perpétua):** **Antes de implementar uma "fase" do MVP, fazer grep targeted no schema/zone config/tests para mapear o que JÁ existe.** A Fase 1 saiu de "3 deliverables novos" para "1 coluna + 3 helpers" graças a este scan. Mesma heurística a aplicar em Fase 3 (excel_importer) e Fase 5 (alerts): começar lendo o que existe, listar o que falta, decidir mínimo delta.
+- **Cross-ref:** `[[docs/mvp_plano.md §Fase 2]]` `[[src/pdf_importer/parse.py::_norm_frequency_type]]` `[[src/pdf_importer/persist.py::_build_item_row]]` `[[data/import_zones/default.json]]` `[[tests/test_pdf_persist_projection.py]]` `[[tests/test_pdf_wizard_ui.py::FREQUENCY_OPTIONS]]`
+
+### [2026-07-01] Fase 2 — Incremento 1: 3 módulos puros + 3 testes, com bug de acento descoberto via smoke
+
+- **Categoria:** `code` (3 módulos novos) + `test` (3 arquivos de teste) + `fix` (1 bug em frequency.py)
+- **Status:** `passed` (smoke validou todos os 3 módulos; pytest do usuário pendente)
+- **Componentes:**
+  - `src/pdf_importer/quantity.py` (~70 linhas) — `parse_quantity(text)` regex `(\d+)\s*(?:sess(?:[ãáa]o|[õoó]es)|aplica(?:[çc][ãáa]o|[çc][õoó]es))`.
+  - `src/pdf_importer/frequency.py` (~80 linhas) — `PERIOD_DAYS` (11 chaves: 9 canônicas + 2 aliases) + `derive_periodicity(freq_type)` lookup case-insensitive.
+  - `src/pdf_importer/split.py` (~55 linhas) — `split_composite_items(line)` regex `(?<!\d),(?!\s*\d)|\s+e\s+`.
+  - `tests/test_pdf_quantity.py` (~95 linhas, 14 testes) — plural, singular, com/sem acento, empty/None, compound text, parametrizado.
+  - `tests/test_pdf_frequency.py` (~165 linhas, 21 testes) — capitalizado/lowercase, 9 FREQUENCY_OPTIONS, dose única sentinel, idempotência, whitelist de chaves.
+  - `tests/test_pdf_split.py` (~115 linhas, 16 testes) — vírgula, "e", combinação, vírgula decimal preservada, vazio/None/whitespace, parametrizado.
+- **Bug encontrado (B4) — acento em PERIOD_DAYS:** O smoke (`PYTHONPATH=. .venv/Scripts/python.exe -c "..."`) inicial mostrou `derive_periodicity("Diário")` retornando `None` em vez de `1`. Causa raiz: `_norm_frequency_type` retorna `"Diário"` (com acento), o `.lower()` mantém o acento (`"diário"`), mas a chave no `PERIOD_DAYS` era `"diario"` (sem acento) → `.get()` não casa.
+- **Resolução B4:** Adicionei aliases com e sem acento para as 2 chaves com acento (`"diario"`/`"diário"` e `"dose unica"`/`"dose única"`). Lookup continua case-insensitive, sem dependência de `unidecode` ou similar. Atualizei `test_period_days_has_only_known_labels` para esperar 11 chaves (9 canônicas + 2 aliases).
+- **Lição (perpétua):** **Smoke-test ANTES de declarar módulo pronto.** Mesmo padrão da Fase 1 (B2 teste do parser do service_catalog): o smoke `python -c "..."` com casos representativos pegou o bug de acento que os testes paramétricos passariam sem perceber (testes cobriam lowercase `"diario"` mas não `"diário"` lowercase). **Aplicar em Fase 3+:** ao criar módulo novo, rodar 1 smoke inline com casos BEM diferentes (acentos, casing, edge cases) antes de escrever `pytest`. Se o smoke quebrar, fix antes de continuar.
+- **Cross-ref:** `[[src/pdf_importer/quantity.py]]` `[[src/pdf_importer/frequency.py]]` `[[src/pdf_importer/split.py]]` `[[tests/test_pdf_quantity.py]]` `[[tests/test_pdf_frequency.py]]` `[[tests/test_pdf_split.py]]` `[[src/pdf_importer/parse.py::_norm_frequency_type]]` (referência de casing canônico)
+
+### [2026-07-01] Fase 2 — Briefing cliente redefine periodicidade: quinzenal = 15 dias (não 14)
+
+- **Categoria:** `design` (decisão cliente) + `code` (correção) + `test` (testes atualizados)
+- **Status:** `passed` (smoke + pytest do usuário: **427/427 verde**, suíte completa do worktree)
+- **Componente:** `src/pdf_importer/frequency.py::PERIOD_DAYS["quinzenal"]` + `tests/test_pdf_frequency.py` (2 testes)
+- **Decisão cliente (briefing 2026-07-01, ata `docs/cliente_reuniao_2026-07-01.md`):** Quinzenal = literalmente "quinze dias" (não "duas semanas" = 14 dias). PT-BR é categórico: "quinzenal" = 15, não 14.
+- **Aplicação no código (4 edits):**
+  - `src/pdf_importer/frequency.py::PERIOD_DAYS["quinzenal"]`: `14 → 15`
+  - `src/pdf_importer/frequency.py` docstring (linha 23): `Quinzenal -> 14 → Quinzenas -> 15`
+  - `tests/test_pdf_frequency.py::test_quinzenal_capitalized_returns_15` (renomeada de `_14`): esperado `15`
+  - `tests/test_pdf_frequency.py::test_quinzenal_lowercase_returns_15` (renomeada de `_14`): esperado `15`
+- **Validação:** smoke inline cobriu 9 FREQUENCY_OPTIONS × 2 casing + aliases com acento; tabela permanece com 11 chaves (whitelist); 33 testes do `test_pdf_frequency.py` verdes; pytest do worktree verde (`PYTHONPATH=. DCLINIQUE_BACKEND=csv pytest tests/` → 427 passed in 75.90s).
+- **Lição (perpétua):** **Periodicidades com sufixo latino precisam de definição explícita do Cliente.** "Quinzenal" tem 2 leituras razoáveis (15 dias "a cada quinze dias" vs 14 dias "duas semanas"); a escolha semântica do Cliente é determinante. Mesmo padrão aplica a "bimestral" (60 vs 61), "trimestral" (90 vs 91), "semestral". **Aplicar em Fase 3+:** ao adicionar periodicidade nova ao `FREQUENCY_OPTIONS` do wizard ou à `PERIOD_DAYS`, confirmar com o Cliente o número exato antes de gerar `expected_dates` (Fase 2.5 ampliada — `expected_appointments.expected_date`). Drift entre o número assumido vs o número usado pelo Cliente produz alertas errados desde o primeiro PDF importado.
+- **Cross-ref:** `[[src/pdf_importer/frequency.py::PERIOD_DAYS]]` `[[tests/test_pdf_frequency.py]]` `[[memory/mvp-jornada-clinica-2026-06-30.md]]` `[[docs/cliente_reuniao_2026-07-01.md]]` (ata do briefing que motivou o fix; ata nova a ser criada na Fase 2.5)
+- **Phase report:** `docs/phase_reports/mvp_phase_2_report.md` (anexo fix após teste verde; relatório completo da Fase 2.5 será gerado após DROP budget_code + criação de `expected_appointments`)
+
+### [2026-07-01] Fase 2 — Incremento 2: integração schema/parse/persist + decisão "adicionar coluna = 4 lugares"
+
+- **Categoria:** `code` (4 edits schema + 2 edits pdf_importer) + `discovery` (padrão "adicionar coluna = N lugares")
+- **Status:** `passed` (smoke validou schema + integração; pytest do usuário pendente)
+- **Componentes editados (8 lugares no total):**
+  - `src/schemas.py::EXPECTED_SCHEMAS["treatment_plan_items"]` — adicionada `"periodicity_days"` como 8ª coluna.
+  - `data/csv/treatment_plan_items.csv` — header atualizado: `periodicity_days` antes de `frequency_text`.
+  - `src/data_layer/schema.py::_NULLABLE_INT_COLUMNS` — adicionada `("treatment_plan_items", "periodicity_days")`.
+  - `src/data_layer/csv_backend.py::_NULLABLE_INT_COLUMNS` — adicionada `"treatment_plan_items": {"sessions_expected", "periodicity_days"}` (atenção: a versão antiga tinha SÓ `{"sessions_expected"}`, troquei o set).
+  - `src/pdf_importer/parse.py` — 2 edits: (a) imports `derive_periodicity` + `split_composite_items`; (b) loop em `_parse_list_zone` chama `split_composite_items` ANTES do `_apply_mapping` (linha composta vira múltiplas rows) e chama `derive_periodicity` APÓS o `_apply_mapping` (linha Aplicação: re-deriva).
+  - `src/pdf_importer/persist.py` — 2 edits: `_build_item_row` (insert path) + `new_items` dict no replace path. Sincronia: ambos chamam `_coerce_int_or_none(item.get("periodicity_days"))`.
+- **Lição (perpétua):** **Adicionar coluna nova = 4 lugares.** Mesma lição da Fase 1 ("adicionar página = 3 lugares"): `schemas.py` + `data/csv/<table>.csv` header + `data_layer/schema.py::_postgres_type` map + `csv_backend.py::_nullable_int_columns` (ou equivalente). Esquecer 1 lugar = bug silencioso (CSV lê coluna nova como `NaN`, Postgres rejeita INSERT). **Aplicar em Fase 3+:** helper `add_column(table, name, type)` que atualiza os 4 lugares de uma vez. Refactor pequeno, elimina classe de bug. Mesmo padrão para Fase 5 (alert_audit_log tabela nova — vai precisar de 4 lugares para colunas novas).
+- **Lição (perpétua):** **Sync insert path + replace path em `persist.py`.** A função `persist_rows` tem 2 caminhos (insert novo vs replace_plan), e ambos montam row dicts para `treatment_plan_items`. Esquecer 1 caminho = silent regression (replace re-importa com `periodicity_days` NULL mesmo se o item original tinha valor). O smoke validou apenas o insert path; o replace path precisa de teste E2E (rodar `pwsh scripts/run_core_tests.ps1`). **Aplicar em Fase 3+:** ao adicionar campo novo a uma tabela, listar TODOS os call sites que montam row dicts e atualizar todos. Heurística: `grep "_build_item_row\|new_items.append" src/pdf_importer/persist.py`.
+- **Cross-ref:** `[[src/schemas.py]]` `[[data/csv/treatment_plan_items.csv]]` `[[src/data_layer/schema.py]]` `[[src/data_layer/csv_backend.py]]` `[[src/pdf_importer/parse.py]]` `[[src/pdf_importer/persist.py]]` `[[docs/cliente_reuniao_2026-06-30.md D5]]` (split por vírgula)

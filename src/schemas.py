@@ -38,6 +38,13 @@ EXPECTED_SCHEMAS: dict[str, list[str]] = {
         "raw_name",
         "category",
         "sessions_expected",
+        # ``periodicity_days`` foi adicionado na Fase 2 do MVP
+        # Jornada Clinica. E' derivado de ``frequency_type`` via
+        # ``src.pdf_importer.frequency.derive_periodicity`` no
+        # momento do parse (ver ``parse._parse_list_zone``). NULL
+        # para ``dose única`` (sentinela -- ver lição Caminho B
+        # Fase 6) ou para items sem ``frequency_type``.
+        "periodicity_days",
         "frequency_text",
         "frequency_type",
         "source",
@@ -120,6 +127,35 @@ EXPECTED_SCHEMAS: dict[str, list[str]] = {
         "comment",
     ],
     "data_quality_issues": ["issue_id", "source", "severity", "issue_type", "description", "patient_id", "field_name"],
+    # --- MVP Jornada Clínica (Fase 1 — ver docs/mvp_plano.md) ---
+    # service_catalog: whitelist de serviços canônicos. PK = service_code
+    # (TEXT, fornecido pelo import — não há next_id porque o código é
+    # externo, decidido pela equipe clínica / lista da Dane).
+    # classification ∈ {active, rare, obsolete}. category ∈
+    # {injectable, professional, other} ou NULL. default_periodicity_days
+    # nullable (alguns serviços são pontuais).
+    "service_catalog": [
+        "service_code",
+        "name",
+        "classification",
+        "category",
+        "default_periodicity_days",
+        "source",
+        "created_at",
+    ],
+    # service_review_queue: serviços encontrados em Excel/PDF que não
+    # constam em service_catalog. PK = id (TEXT, gerado por next_id com
+    # prefixo "srv_new"). occurrences = quantas vezes o serviço apareceu
+    # (incremental). status ∈ {pending, classified, ignored}.
+    "service_review_queue": [
+        "id",
+        "service_name",
+        "source",
+        "occurrences",
+        "first_seen_at",
+        "last_seen_at",
+        "status",
+    ],
 }
 
 

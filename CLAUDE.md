@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Projecto
 
-**MAP** (Minimum Acceptable Product) — casca navegável Streamlit para acompanhamento de pacientes em planos de tratamento. A fonte de verdade em PRD é **Postgres no Neon** (feature aprovada pelo Cliente — `src/data_layer/postgres_backend.py`, `scripts/init_neon_schema.py`, `scripts/validate_neon.py`). CSVs em `data/csv/` viraram schema de referência + fallback `csv` para dev offline (ativo quando `DCLINIQUE_BACKEND=csv`; default é `postgres`). A feature de **importação de pacientes via PDF** (`src/pdf_importer/`, `data/import_zones/default.json`, componente `importar_pdf_wizard`) é parte oficial do app — parser real de PDF é **exigência do Cliente** (não exceção). O **deploy no Streamlit Community Cloud** foi liberado (ver `DEPLOY.md` para o gate de LGPD, setup e modelo de acesso); o gate continua obrigatório antes de qualquer publicação. Continua fora do escopo: Supabase, login próprio, WhatsApp, Google Drive, parser de Excel e outras integrações externas não listadas.
+**MAP** (Minimum Acceptable Product) — casca navegável Streamlit para acompanhamento de pacientes em planos de tratamento. A fonte de verdade em PRD é **Postgres no Neon** (feature aprovada pelo Cliente — `src/data_layer/postgres_backend.py`, `scripts/init_neon_schema.py`, `scripts/validate_neon.py`). CSVs em `data/csv/` viraram schema de referência + fallback `csv` para dev offline (ativo quando `DCLINIQUE_BACKEND=csv`; default é `postgres`). A feature de **importação de pacientes via PDF** (`src/pdf_importer/`, `data/import_zones/default.json`, componente `importar_pdf_wizard`) é parte oficial do app — parser real de PDF é **exigência do Cliente** (não exceção). A feature de **importação de agendamentos via Excel** (`src/excel_importer/`, ver `docs/cliente_reuniao_2026-06-30.md`) é parte oficial do app — parser real de Excel é **exigência do Cliente** desde a reunião de 2026-06-30 (não exceção). O **deploy no Streamlit Community Cloud** foi liberado (ver `DEPLOY.md` para o gate de LGPD, setup e modelo de acesso); o gate continua obrigatório antes de qualquer publicação. Continua fora do escopo: Supabase, login próprio, WhatsApp, Google Drive e outras integrações externas não listadas.
 
 ## Comandos essenciais
 
@@ -93,13 +93,15 @@ A sidebar (`src/components/sidebar.py`) também aceita deep-link via query param
 
 ### Tabelas (contrato)
 
-`patients`, `treatment_plans`, `treatment_plan_items`, `execution_summary`, `appointments`, `appointment_items`, `patient_goals`, `weight_entries`, `satisfaction_entries`, `alerts`, `data_quality_issues`. Ver `src/schemas.py` para colunas exatas. Cada tabela vive em `data/csv/<table>.csv` com as colunas na ordem do schema; linhas podem ser appendadas em runtime via `src.data_layer.append_row`.
+`patients`, `treatment_plans`, `treatment_plan_items`, `execution_summary`, `appointments`, `appointment_items`, `patient_goals`, `weight_entries`, `satisfaction_entries`, `alerts`, `data_quality_issues`, `service_catalog`, `service_review_queue`. Ver `src/schemas.py` para colunas exatas. Cada tabela vive em `data/csv/<table>.csv` com as colunas na ordem do schema; linhas podem ser appendadas em runtime via `src.data_layer.append_row`.
+
+A fonte de verdade do `service_catalog` é upload de CSV pela equipe administrativa / Dane, **não** UI. Importar via `python scripts/import_service_catalog.py --csv <arquivo> --source lista_ativa|dane`. A página `Catálogo de Serviços` é read-only (só consulta + filtros).
 
 ## Restrições de escopo (reforçadas pelos prompts do repositório)
 
 As restrições abaixo aparecem em todos os `.github/agents/*.agent.md` e `.github/prompts/*.prompt.md` e devem ser respeitadas em qualquer mudança:
 
-- **Não** implementar Supabase, login próprio, WhatsApp, Google Drive, parser de Excel, ou outras integrações externas. As exceções aprovadas pelo Cliente são: **parser de PDF** (`src/pdf_importer/`, exigência do Cliente), **Postgres no Neon** como data layer em PRD (`src/data_layer/postgres_backend.py`, `scripts/init_neon_schema.py`) e **deploy no Streamlit Community Cloud** (ver `DEPLOY.md` para o gate de LGPD, obrigatório antes de qualquer publicação). Qualquer outra integração nova exige alinhamento antes.
+- **Não** implementar Supabase, login próprio, WhatsApp, Google Drive, ou outras integrações externas. As exceções aprovadas pelo Cliente são: **parser de PDF** (`src/pdf_importer/`, exigência do Cliente), **parser de Excel** (`src/excel_importer/`, exigência do Cliente — reunião 2026-06-30, ver `docs/cliente_reuniao_2026-06-30.md`), **Postgres no Neon** como data layer em PRD (`src/data_layer/postgres_backend.py`, `scripts/init_neon_schema.py`) e **deploy no Streamlit Community Cloud** (ver `DEPLOY.md` para o gate de LGPD, obrigatório antes de qualquer publicação). Qualquer outra integração nova exige alinhamento antes.
 - **Não** expandir escopo funcional sem alinhamento — o projeto é uma casca navegável, não o produto final.
 - **Preservar** nomes de campos e o contrato de `load_all()` (ver `src/schemas.py`).
 - **Não** aceitar pendências em validação sem registrar impacto.
@@ -165,4 +167,27 @@ SLA alvo (mediana): Mapa de Decisão ≤ 100 ms, navegação entre páginas p95 
 - `.vscode/settings.json` aponta o interpretador padrão para o sistema (`ms-python.python:system`).
 - `.claude/settings.local.json` já autorizou uma série de comandos de validação (imports, `streamlit --version`, smoke do `load_all`). Para rodar benchmark ou outros comandos, observe o permission mode atual.
 - `data/images/` guarda capturas de referência de cada página e o `Croquis_SAD_DClinique.png` (design base); SVGs customizados ficam em `data/images/icones_Croquis_SVG/`.
-- `data/csv/` guarda as 11 tabelas-fonte em CSV (uma por tabela, schema em `src/schemas.py`).
+- `data/csv/` guarda as 13 tabelas-fonte em CSV (uma por tabela, schema em `src/schemas.py`).
+
+## Catálogo de Serviços (MVP Jornada Clínica — Fase 1)
+
+Quando a feature de catálogo estiver habilitada no MVP (consulte `docs/mvp_plano.md` para o status por fase), aplica-se:
+
+- Módulo `src/service_catalog/` com 4 submódulos: `types` (dataclasses `ServiceEntry` + `ReviewEntry`), `parse` (CSV→entries), `persist` (UPSERT via data layer), `review_queue` (enfileiramento idempotente de serviços não classificados).
+- Tabelas adicionais no data layer: `service_catalog` (PK = `service_code`, fornecido pelo import) e `service_review_queue` (PK = `id`, prefixo `srv_new_`, gerado por `next_id`).
+- Importação via CLI: `python scripts/import_service_catalog.py --csv <arquivo> --source lista_ativa|dane [--dry-run]`. UPSERT é idempotente (re-rodar com mesmo CSV não duplica).
+- Página read-only `Catálogo de Serviços` (`src/pages/catalogo_servicos.py`) com filtros por classificação, categoria, origem e busca textual; também mostra a fila de revisão (serviços vindos de Excel/PDF que ainda não estão no catálogo).
+- Acções de classificar/ignorar entradas da fila entram na Fase 6 (junto com o painel de alertas).
+
+## PDF Importer Estendido (MVP Jornada Clínica — Fase 2)
+
+Quando a feature de extração estendida do PDF estiver habilitada no MVP (consulte `docs/mvp_plano.md` §Fase 2 para o status por fase), aplica-se:
+
+- 3 módulos puros novos em `src/pdf_importer/` (sem dependência do data layer):
+  - `quantity.py` — `parse_quantity(text)` extrai contagem de `"X sessões"` / `"X aplicações"`. Plural e singular, com e sem acento. Retorna primeira ocorrência em texto composto.
+  - `frequency.py` — `derive_periodicity(frequency_type)` mapeia `Semanal→7`, `Quinzenal→14`, `Mensal→30`, `Bimestral→60`, `Trimestral→90`, `Diário→1`, `a cada 5/10 dias→5/10`; `dose única→None` (sentinela, **não** 0 — lição Caminho B Fase 6). Lookup case-insensitive + aliases com/sem acento para `"Diário"` e `"dose única"` (parser retorna com acento, wizard grava sem).
+  - `split.py` — `split_composite_items(line)` divide descrições compostas em vírgula (D5), preservando vírgula decimal (`1,5 sessões` fica inteiro).
+- Coluna nova em `treatment_plan_items`: `periodicity_days INT NULL`, derivada no parser e persistida via `_build_item_row` (insert + replace paths). Ordem: 8ª coluna (entre `sessions_expected` e `frequency_text`). Tabela agora tem 12 colunas.
+- Integração no parser (`parse._parse_list_zone`): split acontece **antes** do loop principal (linhas compostas viram múltiplas rows); periodicidade é derivada **depois** de extrair `frequency_type`. Linha `Aplicação:` re-deriva a periodicidade quando atualiza o `frequency_type` do item atual.
+- 3 arquivos de teste isolados: `tests/test_pdf_{quantity,frequency,split}.py` (~47 testes; funções puras, sem fixture de CSV). Frequência inclui `test_period_days_covers_all_frequency_options` que sincroniza wizard <-> módulo.
+- Acções de UI de revisão/justificativa e alertas em fases posteriores (Fase 5+).

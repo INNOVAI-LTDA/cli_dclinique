@@ -374,3 +374,49 @@ grep -rhE "\b(pd|psycopg|streamlit|dateutil|plotly)\." src/core/ | sort -u
 ```
 
 Cada chamada deve ter correspondência em uma seção deste catálogo. Se não tem, **bloqueia o PR** até atualizar.
+
+---
+
+## 12. MVP Jornada Clínica (2026-06-30) — `openpyxl`
+
+> **Origem:** Reunião Diego + Jader em 2026-06-30 21:25 (ata em `docs/cliente_reuniao_2026-06-30.md`). Decisão D1+D2+D7 + §5+§8.4 da ata exigem parser de Excel para agendamentos. Excel parser foi promovido a **exceção do Cliente** em CLAUDE.md (2026-06-30, M1 da execução autorizada).
+
+**Status:** rascunho — preenchido quando a Fase 3 (`excel_importer`) entrar em desenvolvimento.
+
+### 12.1 Operações previstas
+
+| Operação | Onde vai ser usada | Exceções a capturar |
+|---|---|---|
+| `openpyxl.load_workbook(path)` | `src/excel_importer/parse.py` | `openpyxl.utils.exceptions.InvalidFileException`, `FileNotFoundError`, `PermissionError`, `zipfile.BadZipFile` |
+| `ws.iter_rows(values_only=True)` | `src/excel_importer/parse.py` | (genérico) — capturar `StopIteration` apenas se necessário |
+| `cell.value` (data type coercion) | `src/excel_importer/parse.py` | `TypeError`, `ValueError` para datas PT-BR |
+| `wb.save(path)` | (somente se houver write-back; verificar antes) | `PermissionError` |
+
+### 12.2 Exceções específicas com mensagem PT-BR
+
+| Exceção | Mensagem PT-BR |
+|---|---|
+| `openpyxl.utils.exceptions.InvalidFileException` | "Arquivo Excel inválido ou corrompido: {path}. Verifique se é um .xlsx legítimo." |
+| `zipfile.BadZipFile` | "Arquivo Excel inválido (não é um arquivo .xlsx válido): {path}." |
+| `FileNotFoundError` | "Arquivo Excel não encontrado: {path}." |
+| `PermissionError` | "Sem permissão para ler o arquivo Excel: {path}." |
+| `KeyError` (coluna faltando no header) | "Coluna obrigatória ausente no Excel: {coluna}. Esperado: {schema}." |
+
+### 12.3 Notas de design
+
+- **`openpyxl` é lazy** — importar dentro da função `parse_xlsx()`, não no topo do módulo. Preserva cold start (CLAUDE.md seção "Otimizações ativas").
+- **Datas no Excel**: serial number nativo do Excel; converter via `openpyxl.utils.datetime.from_excel` ou detectar se é string PT-BR (`DD/MM/YYYY`). **Validar com 1 amostra de Jader antes de fixar a heurística.**
+- **Encoding**: Excel `.xlsx` é XML interno UTF-8; não há problema de mojibake. Mas se vier CSV em vez de XLSX, aplicar pattern do §1 (UnicodeDecodeError).
+- **Não usar** `xlrd` (legado, não lê `.xlsx`). **Não usar** `pandas.read_excel` para .xlsx sem ter `openpyxl` ou `xlrd` instalado — usar `openpyxl` direto é mais transparente.
+
+---
+
+## 13. MVP Jornada Clínica (2026-06-30) — pandas aplicado ao Excel
+
+> `pandas.read_excel` **NÃO** será usado (mais lento, menos transparente que `openpyxl` direto). Mas `pandas` continua sendo usado em todo o resto do MVP (criação de DataFrames para `expected_appointments`, `alerts`, etc.). Exceções de `pandas` já estão catalogadas nas seções §1, §6 e §11 deste catálogo (Caminho B). **Não duplicar.**
+
+---
+
+## 14. MVP Jornada Clínica (2026-06-30) — psycopg (já catalogado em §8 do Caminho B)
+
+> `psycopg` (Neon backend) já está coberto pela §8 (catalog original do Caminho B). O MVP herda sem alterações: `INSERT ... ON CONFLICT` para idempotência, `connection.timeout` para não travar UI, `pool de conexões` para jobs recorrentes (Fase 8).

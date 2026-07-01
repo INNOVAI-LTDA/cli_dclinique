@@ -215,6 +215,9 @@ def _build_item_row(item_id: str, plan_id: str, patient_id: str, budget_code: st
         "raw_name": item.get("raw_name"),
         "category": item.get("category") or None,
         "sessions_expected": _coerce_int_or_none(item.get("sessions_expected")),
+        # MVP Fase 2: ``periodicity_days`` chega como Int64 (nullable)
+        # do parser; usa ``_coerce_int_or_none`` para rejeitar lixo.
+        "periodicity_days": _coerce_int_or_none(item.get("periodicity_days")),
         "frequency_text": item.get("frequency_text") or None,
         "frequency_type": item.get("frequency_type") or None,
         "source": "PDF",
@@ -481,6 +484,9 @@ def persist_rows(
                     "raw_name": item.get("raw_name"),
                     "category": item.get("category") or None,
                     "sessions_expected": _coerce_int_or_none(item.get("sessions_expected")),
+                    # MVP Fase 2: periodicidade também propagada no replace path
+                    # (sincronia com insert path acima).
+                    "periodicity_days": _coerce_int_or_none(item.get("periodicity_days")),
                     "frequency_text": item.get("frequency_text") or None,
                     "frequency_type": item.get("frequency_type") or None,
                     "source": "PDF",

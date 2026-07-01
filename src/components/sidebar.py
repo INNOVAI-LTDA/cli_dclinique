@@ -18,6 +18,7 @@ PAGE_ICONS = {
     "Visão Geral": "01_visao_geral.svg",
     "Mapa de Decisão": "02_mapa_de_decisao.svg",
     "Pacientes": "03_pacientes.svg",
+    "Catálogo de Serviços": "14_arquivo_documento.svg",
     "Alertas": "04_alertas.svg",
     "Atualização de Dados": "05_atualizacao_dados.svg",
     "Qualidade dos Dados": "06_qualidade_dados.svg",

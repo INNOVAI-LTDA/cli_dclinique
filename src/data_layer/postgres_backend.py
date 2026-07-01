@@ -60,6 +60,11 @@ NEW_ID_PREFIX: dict[str, str] = {
     # (which inspect every pk in the schema) don't collide with
     # patient/plan ids.
     "execution_summary": "exec_new",
+    # --- MVP Jornada Clínica (Fase 1) ---
+    # ``service_catalog`` PK = service_code (TEXT, fornecido pelo
+    # import — não passa por next_id; o código é externo).
+    # ``service_review_queue`` PK = id (gerado por next_id).
+    "service_review_queue": "srv_new",
 }
 
 # Per-table dtype maps (mirror de csv_backend._DATE_COLUMNS etc.).
@@ -81,6 +86,9 @@ _DATE_COLUMNS: dict[str, set[str]] = {
     "weight_entries": {"measurement_date"},
     "satisfaction_entries": {"date"},
     "alerts": {"created_at"},
+    # --- MVP Jornada Clínica (Fase 1) ---
+    "service_catalog": {"created_at"},
+    "service_review_queue": {"first_seen_at", "last_seen_at"},
 }
 _BOOL_COLUMNS: dict[str, set[str]] = {
     "treatment_plans": {"is_renewal"},
@@ -91,6 +99,9 @@ _NULLABLE_INT_COLUMNS: dict[str, set[str]] = {
     "treatment_plan_items": {"sessions_expected"},
     "execution_summary": {"sessions_expected", "sessions_completed", "sessions_remaining"},
     "satisfaction_entries": {"score"},
+    # --- MVP Jornada Clínica (Fase 1) ---
+    "service_catalog": {"default_periodicity_days"},
+    "service_review_queue": {"occurrences"},
 }
 # psycopg retorna float Python para DOUBLE PRECISION; pandas infere
 # float64 sem coerce. Mantemos o map explicito para documentacao e

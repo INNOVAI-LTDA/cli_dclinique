@@ -1,1 +1,1 @@
-plan_item_id,plan_id,patient_id,budget_code,raw_name,category,sessions_expected,frequency_text,frequency_type,source,needs_manual_review
+plan_item_id,plan_id,patient_id,budget_code,raw_name,category,sessions_expected,periodicity_days,frequency_text,frequency_type,source,needs_manual_review
