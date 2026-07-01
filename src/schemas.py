@@ -38,6 +38,13 @@ EXPECTED_SCHEMAS: dict[str, list[str]] = {
         "raw_name",
         "category",
         "sessions_expected",
+        # ``periodicity_days`` foi adicionado na Fase 2 do MVP
+        # Jornada Clinica. E' derivado de ``frequency_type`` via
+        # ``src.pdf_importer.frequency.derive_periodicity`` no
+        # momento do parse (ver ``parse._parse_list_zone``). NULL
+        # para ``dose única`` (sentinela -- ver lição Caminho B
+        # Fase 6) ou para items sem ``frequency_type``.
+        "periodicity_days",
         "frequency_text",
         "frequency_type",
         "source",

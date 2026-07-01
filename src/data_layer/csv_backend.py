@@ -80,6 +80,12 @@ _BOOL_COLUMNS: dict[str, set[str]] = {
 _NULLABLE_INT_COLUMNS: dict[str, set[str]] = {
     "patients": {"age"},
     "treatment_plan_items": {"sessions_expected"},
+    # --- MVP Jornada Clínica (Fase 2) ---
+    # ``periodicity_days`` é derivado de ``frequency_type`` no parser
+    # (ver ``src.pdf_importer.frequency.derive_periodicity``). Nullable
+    # porque ``dose única`` retorna sentinel ``None`` por design (licão
+    # Caminho B Fase 6) ou items sem ``frequency_type`` ficam NULL.
+    "treatment_plan_items": {"sessions_expected", "periodicity_days"},
     "execution_summary": {"sessions_expected", "sessions_completed", "sessions_remaining"},
     "satisfaction_entries": {"score"},
     # --- MVP Jornada Clínica (Fase 1) ---

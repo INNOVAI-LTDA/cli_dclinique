@@ -71,6 +71,13 @@ _BOOL_COLUMNS = {
 _NULLABLE_INT_COLUMNS = {
     ("patients", "age"),
     ("treatment_plan_items", "sessions_expected"),
+    # --- MVP Jornada Clínica (Fase 2) ---
+    # ``periodicity_days`` é derivado de ``frequency_type`` no parser
+    # (ver ``src.pdf_importer.frequency.derive_periodicity``). Nullable
+    # porque (a) ``dose única`` retorna sentinel ``None`` por design
+    # (licão Caminho B Fase 6), e (b) items sem ``frequency_type``
+    # também ficam NULL.
+    ("treatment_plan_items", "periodicity_days"),
     ("execution_summary", "sessions_expected"),
     ("execution_summary", "sessions_completed"),
     ("execution_summary", "sessions_remaining"),

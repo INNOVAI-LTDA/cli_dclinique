@@ -28,7 +28,9 @@ from pathlib import Path
 from typing import Any, Callable, Union
 
 from src.pdf_importer.extract import PdfSource, extract_text_from_zone
+from src.pdf_importer.frequency import derive_periodicity
 from src.pdf_importer.log import PdfImportLogger
+from src.pdf_importer.split import split_composite_items
 
 # ---------------------------------------------------------------------------
 # Normalizers
@@ -335,36 +337,58 @@ def _parse_list_zone(
                     )
                 if value is not None:
                     current[column] = value
+            # Recalcula ``periodicity_days`` quando uma linha ``Aplicação``
+            # atualiza o ``frequency_type`` do item atual -- senao a row
+            # ficaria com o valor (ou None) do momento da criação.
+            if current.get("frequency_type"):
+                current["periodicity_days"] = derive_periodicity(
+                    current["frequency_type"]
+                )
             continue
 
         if lower.startswith(_SKIP_PREFIXES):
             continue
 
-        row: dict[str, Any] = {}
-        item_warnings: list[str] = []
-        for mapping in zone.get("field_mappings", []):
-            value, status = _apply_mapping(line, mapping)
-            column = mapping.get("target_column", "")
-            row[column] = value
-            if logger is not None:
-                logger.field(
-                    zone=zone_id,
-                    field_name=column,
-                    status=status,
-                    value=value if status == "MATCHED" else None,
-                    pattern=mapping.get("pattern"),
+        # D5 (MVP Fase 2): virgula + " e " em descrições compostas viram
+        # items separados (ex.: ``"medicamento X, injetaveis IM, injetaveis EV"``
+        # -> 3 rows). Linhas sem split caem de volta em ``[line]`` (1 row).
+        sub_lines = split_composite_items(line) or [line]
+        for sub_line in sub_lines:
+            row: dict[str, Any] = {}
+            item_warnings: list[str] = []
+            for mapping in zone.get("field_mappings", []):
+                value, status = _apply_mapping(sub_line, mapping)
+                column = mapping.get("target_column", "")
+                row[column] = value
+                if logger is not None:
+                    logger.field(
+                        zone=zone_id,
+                        field_name=column,
+                        status=status,
+                        value=value if status == "MATCHED" else None,
+                        pattern=mapping.get("pattern"),
+                    )
+                if status in {"MISSING_REQUIRED", "NORMALIZER_FAILED"}:
+                    item_warnings.append(f"{column} (obrigatório não encontrado)")
+            if row.get("category") is None:
+                row["category"] = _infer_category(row.get("raw_name"))
+            # MVP Fase 2: deriva ``periodicity_days`` a partir do
+            # ``frequency_type`` extraido pela ``_norm_frequency_type``.
+            # ``dose única`` -> ``None`` (sentinela, não 0 -- ver lição
+            # Caminho B Fase 6). Sem ``frequency_type`` -> ``None``.
+            if row.get("frequency_type"):
+                row["periodicity_days"] = derive_periodicity(
+                    row["frequency_type"]
                 )
-            if status in {"MISSING_REQUIRED", "NORMALIZER_FAILED"}:
-                item_warnings.append(f"{column} (obrigatório não encontrado)")
-        if row.get("category") is None:
-            row["category"] = _infer_category(row.get("raw_name"))
-        row["needs_manual_review"] = bool(item_warnings) or row.get("category") is None
-        if item_warnings or row.get("category") is None:
-            warnings.append(
-                f"{zone_id}: linha '{line[:30]}...' requer revisão"
-            )
-        rows.append(row)
-        current = row
+            else:
+                row["periodicity_days"] = None
+            row["needs_manual_review"] = bool(item_warnings) or row.get("category") is None
+            if item_warnings or row.get("category") is None:
+                warnings.append(
+                    f"{zone_id}: linha '{sub_line[:30]}...' requer revisão"
+                )
+            rows.append(row)
+            current = row
 
     return rows, warnings
 

@@ -129,11 +129,11 @@
 
 | # | Condição | Status |
 |---|---|---|
-| 1 | `ruff check src/core tests/` retorna 0 erros | ⏸️ **Não verificado nesta sessão** — usuário roda. (Módulo `src/service_catalog/` está fora de `src/core/`, fora do escopo do linter.) |
-| 2 | `pytest tests/` retorna 100% passed | ⏸️ **Não verificado nesta sessão** — 19 testes novos foram escritos mas não rodados. |
+| 1 | `ruff check src/core tests/` retorna 0 erros | ✅ **Verificado em 2026-07-01** (1ª rodada do `run_core_tests.ps1`: step 7, 8, 9 todos passaram). Módulo `src/service_catalog/` está fora de `src/core/`, fora do escopo do linter. |
+| 2 | `pytest tests/` retorna 100% passed | ⚠️ **1ª rodada 337/356 (19 failed)** em 2026-07-01 11:14:35 → 3 correções aplicadas (B1/B2/B3 — ver "Pós-validação runtime" abaixo) → aguardando re-rodada do usuário para confirmar 356/356. |
 | 3 | `streamlit run app.py` sobe sem traceback | ⏸️ **Não verificado nesta sessão** — usuário valida. |
 | 4 | N7 satisfeito (`test_exception_handling.py` passa + `docs/exception_catalog.md` atualizado + nenhum `print(` em `src/core/`) | ✅ Catálogo de exceções aplicado: todos os erros de I/O do data layer são envolvidos em try/except específico. Logs em PT-BR via `logging`. Sem `print(` em `src/service_catalog/`. |
-| 5 | N8 satisfeito (entradas no `experience_log.md`) | ✅ Ver "Lições desta fase" abaixo. |
+| 5 | N8 satisfeito (entradas no `experience_log.md`) | ✅ Ver "Lições desta fase" abaixo + nova seção "Validação runtime + correções 2026-07-01" (3 bugs da validação). |
 | 6 | N9 satisfeito (`phase_N_report.md` produzido) | ✅ Este relatório. |
 
 > **Nota:** condições 1, 2, 3 seguem a regra do `testing-workflow-with-logs` — usuário valida localmente com `pwsh scripts/run_core_tests.ps1` e cola logs em caso de falha.
@@ -154,16 +154,34 @@ Entradas adicionadas a `docs/experience_log.md`:
 
 1. **`service_catalog` no Postgres backend:** não tem ON CONFLICT, então UPDATE (re-classificação) só funciona no backend CSV. **Resolução prevista:** Fase 5 (junto com CRUD de alertas).
 2. **CRUD de entradas da fila de revisão:** `mark_review_entry` existe, mas a UI da Fase 1 não expõe botões "classificar"/"ignorar" (read-only por Q7). **Resolução prevista:** Fase 6 (junto com painel de alertas).
-3. **M2 — rename de diretório da worktree:** ainda pendente da Fase 0. Diretório é `feature-supporthealthDB-clone`, branch é `worktree-feature-jornada-clinica`.
-4. **Migração Neon:** `scripts/init_neon_schema.py` agora cria 13 tabelas (não 11). **Não testado** contra Neon real nesta sessão — só o schema Python foi alterado.
+3. **Migração Neon:** `scripts/init_neon_schema.py` agora cria 13 tabelas (não 11). **Não testado** contra Neon real nesta sessão — só o schema Python foi alterado.
+
+## Pós-validação runtime (2026-07-01)
+
+**Primeira rodada:** `pwsh scripts/run_core_tests.ps1` em 2026-07-01 11:14:35 → **337/356 passed, 19 failed**. Logs: `logs/test_core_20260701-111435.{log,json}`.
+
+**3 bugs identificados (todos corrigidos em 2026-07-01):**
+
+| # | Componente | Causa | Fix |
+|---|---|---|---|
+| **B1** | `src/components/sidebar.py::PAGE_ICONS` (linhas 17-24) | Fase 1 adicionou "Catálogo de Serviços" em `navigation.py::SIDEBAR_PAGES` + `app.py::_PAGE_MODULES`, mas **esqueceu o ícone** no `sidebar.PAGE_ICONS` → `KeyError: 'Catálogo de Serviços'` quebra toda renderização do app (efeito cascata em **17 testes** de `tests/test_integration.py`). | Adicionado `"Catálogo de Serviços": "14_arquivo_documento.svg"` em `PAGE_ICONS` (mantendo ordem de `SIDEBAR_PAGES`; semanticamente "lista de documentos"). |
+| **B2** | `tests/test_service_catalog.py::test_parse_catalog_csv_returns_entries` (linhas 80-91) | Teste esperava **9 entries**; parser retorna **10** (comportamento correto — linha 10 do fixture `DERMATO_PED,Dramaturgia Pediátrica,rare,,,dane,...` tem `service_code`+`name` válidos, então gera entry com `category=None`). | Assertion `== 9` → `== 10`; docstring do teste + comentário inline atualizados; `rows_skipped >= 1` → `== 1` (mais estrito). |
+| **B3** | `src/service_catalog/review_queue.py::enqueue_unknown_service` (linhas 140-225) | Função só verificava `pending` (incrementa `occurrences`). Docstring (linhas 17-20) prometia pular quando já existe `classified`/`ignored` ("decisão já tomada pela equipe"), mas o **branch estava ausente no código**. | Adicionado novo branch `# 0)` antes do branch `# 1)`: checa `classified`/`ignored` com mesmo nome normalizado → retorna `EnqueueResult(action="skipped", review_id=None)` + log PT-BR. |
+
+**Status:** 3 correções aplicadas em 2026-07-01 (working tree suja — você revisa e commita). **Aguardando re-rodada do usuário** para confirmar 356/356 passed. Detalhes completos + 3 lições permanentes em `docs/experience_log.md` (seção "Validação runtime + correções 2026-07-01").
+
+**3 lições a aplicar em Fase 2+:**
+1. **Adicionar página = 3 lugares** (Navigation + Routing + Sidebar icons) — candidato a refactor para helper `register_page()`.
+2. **Teste de contagem precisa de smoke E2E prévio** (`python -c "print(len(parse(...)))"` antes de escrever `assert len == N`).
+3. **Docstring como spec precisa de teste explícito por cláusula** ("Se X então Y" → 1 teste por cláusula).
 
 ---
 
 ## Status da Fase 1
 
-**Status:** ✅ **Fase 1 fechada** (código + testes + docs + commit). **Validação runtime pendente** (usuário roda testes + smoke do `app.py`).
+**Status:** ✅ **Fase 1 fechada em código** (commit `2b56188`). ⚠️ **Validação runtime em re-rodada:** 1ª rodada 337/356 → 3 correções aplicadas (B1/B2/B3 acima) → aguardando re-rodada do usuário para confirmar 356/356.
 **Próxima fase:** **Fase 2 — parser PDF (`src/pdf_importer/`)**, que enfileira serviços não classificados em `service_review_queue` via `enqueue_unknown_service`. Independente do input de Jader — só precisa de 1 PDF sanitizado de Diego.
-**Bloqueios para Fase 2:** nenhum.
+**Bloqueios para Fase 2:** nenhum (assumindo re-rodada verde da Fase 1).
 
 ---
 

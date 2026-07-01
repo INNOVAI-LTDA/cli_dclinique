@@ -78,14 +78,15 @@ def _make_entry(
 
 
 def test_parse_catalog_csv_returns_entries() -> None:
-    """Le o CSV de fixture e retorna 9 entries validas + 2 skipped."""
+    """Le o CSV de fixture e retorna 10 entries validas + 1 skipped."""
     result = parse_catalog_csv(SAMPLE_CSV)
 
     assert isinstance(result.entries, tuple)
-    assert len(result.entries) == 9
-    # 2 linhas puladas: row vazia (sem service_code) + nada mais
-    # (a row VALID_PERIODIC e' mantida como periodicidade=None).
-    assert result.rows_skipped >= 1
+    assert len(result.entries) == 10
+    # 1 linha pulada: row vazia (sem service_code).
+    # A row VALID_PERIODIC (periodicity 7.5) e' mantida como periodicidade=None.
+    # A row DERMATO_PED (categoria vazia) e' mantida como category=None.
+    assert result.rows_skipped == 1
     # Linhas totais no CSV (header nao conta).
     assert result.rows_total == 11
 

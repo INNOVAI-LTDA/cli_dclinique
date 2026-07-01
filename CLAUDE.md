@@ -178,3 +178,16 @@ Quando a feature de catálogo estiver habilitada no MVP (consulte `docs/mvp_plan
 - Importação via CLI: `python scripts/import_service_catalog.py --csv <arquivo> --source lista_ativa|dane [--dry-run]`. UPSERT é idempotente (re-rodar com mesmo CSV não duplica).
 - Página read-only `Catálogo de Serviços` (`src/pages/catalogo_servicos.py`) com filtros por classificação, categoria, origem e busca textual; também mostra a fila de revisão (serviços vindos de Excel/PDF que ainda não estão no catálogo).
 - Acções de classificar/ignorar entradas da fila entram na Fase 6 (junto com o painel de alertas).
+
+## PDF Importer Estendido (MVP Jornada Clínica — Fase 2)
+
+Quando a feature de extração estendida do PDF estiver habilitada no MVP (consulte `docs/mvp_plano.md` §Fase 2 para o status por fase), aplica-se:
+
+- 3 módulos puros novos em `src/pdf_importer/` (sem dependência do data layer):
+  - `quantity.py` — `parse_quantity(text)` extrai contagem de `"X sessões"` / `"X aplicações"`. Plural e singular, com e sem acento. Retorna primeira ocorrência em texto composto.
+  - `frequency.py` — `derive_periodicity(frequency_type)` mapeia `Semanal→7`, `Quinzenal→14`, `Mensal→30`, `Bimestral→60`, `Trimestral→90`, `Diário→1`, `a cada 5/10 dias→5/10`; `dose única→None` (sentinela, **não** 0 — lição Caminho B Fase 6). Lookup case-insensitive + aliases com/sem acento para `"Diário"` e `"dose única"` (parser retorna com acento, wizard grava sem).
+  - `split.py` — `split_composite_items(line)` divide descrições compostas em vírgula (D5), preservando vírgula decimal (`1,5 sessões` fica inteiro).
+- Coluna nova em `treatment_plan_items`: `periodicity_days INT NULL`, derivada no parser e persistida via `_build_item_row` (insert + replace paths). Ordem: 8ª coluna (entre `sessions_expected` e `frequency_text`). Tabela agora tem 12 colunas.
+- Integração no parser (`parse._parse_list_zone`): split acontece **antes** do loop principal (linhas compostas viram múltiplas rows); periodicidade é derivada **depois** de extrair `frequency_type`. Linha `Aplicação:` re-deriva a periodicidade quando atualiza o `frequency_type` do item atual.
+- 3 arquivos de teste isolados: `tests/test_pdf_{quantity,frequency,split}.py` (~47 testes; funções puras, sem fixture de CSV). Frequência inclui `test_period_days_covers_all_frequency_options` que sincroniza wizard <-> módulo.
+- Acções de UI de revisão/justificativa e alertas em fases posteriores (Fase 5+).

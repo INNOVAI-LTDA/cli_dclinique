@@ -169,6 +169,24 @@ def enqueue_unknown_service(
         )
         return EnqueueResult(action="skipped", review_id=None)
 
+    # 0) Ja' existe classified/ignored com mesmo nome? -> skip.
+    # (Decisao ja' tomada pela equipe - nao re-enfileirar.)
+    if (
+        not df.empty
+        and "service_name" in df.columns
+        and "status" in df.columns
+    ):
+        decided_mask = (
+            df["service_name"].astype(str).apply(_normalize_service_name)
+            == normalized
+        ) & df["status"].astype(str).isin(["classified", "ignored"])
+        if decided_mask.any():
+            logger.info(
+                "review_queue: pulado %r (ja' decidido anteriormente)",
+                service_name,
+            )
+            return EnqueueResult(action="skipped", review_id=None)
+
     # 1) Ja' existe pending com mesmo nome? -> incrementa occurrences.
     existing_id = _find_pending_by_name(df, normalized)
     if existing_id is not None:
