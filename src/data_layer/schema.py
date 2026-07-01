@@ -57,6 +57,10 @@ _DATE_COLUMNS = {
     ("weight_entries", "measurement_date"),
     ("satisfaction_entries", "date"),
     ("alerts", "created_at"),
+    # --- MVP Jornada Clínica (Fase 1) ---
+    ("service_catalog", "created_at"),
+    ("service_review_queue", "first_seen_at"),
+    ("service_review_queue", "last_seen_at"),
 }
 
 _BOOL_COLUMNS = {
@@ -71,6 +75,9 @@ _NULLABLE_INT_COLUMNS = {
     ("execution_summary", "sessions_completed"),
     ("execution_summary", "sessions_remaining"),
     ("satisfaction_entries", "score"),
+    # --- MVP Jornada Clínica (Fase 1) ---
+    ("service_catalog", "default_periodicity_days"),
+    ("service_review_queue", "occurrences"),
 }
 
 # CSV nao tem map explicito (pandas infere float64 automatico),

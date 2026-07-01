@@ -93,7 +93,9 @@ A sidebar (`src/components/sidebar.py`) também aceita deep-link via query param
 
 ### Tabelas (contrato)
 
-`patients`, `treatment_plans`, `treatment_plan_items`, `execution_summary`, `appointments`, `appointment_items`, `patient_goals`, `weight_entries`, `satisfaction_entries`, `alerts`, `data_quality_issues`. Ver `src/schemas.py` para colunas exatas. Cada tabela vive em `data/csv/<table>.csv` com as colunas na ordem do schema; linhas podem ser appendadas em runtime via `src.data_layer.append_row`.
+`patients`, `treatment_plans`, `treatment_plan_items`, `execution_summary`, `appointments`, `appointment_items`, `patient_goals`, `weight_entries`, `satisfaction_entries`, `alerts`, `data_quality_issues`, `service_catalog`, `service_review_queue`. Ver `src/schemas.py` para colunas exatas. Cada tabela vive em `data/csv/<table>.csv` com as colunas na ordem do schema; linhas podem ser appendadas em runtime via `src.data_layer.append_row`.
+
+A fonte de verdade do `service_catalog` é upload de CSV pela equipe administrativa / Dane, **não** UI. Importar via `python scripts/import_service_catalog.py --csv <arquivo> --source lista_ativa|dane`. A página `Catálogo de Serviços` é read-only (só consulta + filtros).
 
 ## Restrições de escopo (reforçadas pelos prompts do repositório)
 
@@ -165,4 +167,14 @@ SLA alvo (mediana): Mapa de Decisão ≤ 100 ms, navegação entre páginas p95 
 - `.vscode/settings.json` aponta o interpretador padrão para o sistema (`ms-python.python:system`).
 - `.claude/settings.local.json` já autorizou uma série de comandos de validação (imports, `streamlit --version`, smoke do `load_all`). Para rodar benchmark ou outros comandos, observe o permission mode atual.
 - `data/images/` guarda capturas de referência de cada página e o `Croquis_SAD_DClinique.png` (design base); SVGs customizados ficam em `data/images/icones_Croquis_SVG/`.
-- `data/csv/` guarda as 11 tabelas-fonte em CSV (uma por tabela, schema em `src/schemas.py`).
+- `data/csv/` guarda as 13 tabelas-fonte em CSV (uma por tabela, schema em `src/schemas.py`).
+
+## Catálogo de Serviços (MVP Jornada Clínica — Fase 1)
+
+Quando a feature de catálogo estiver habilitada no MVP (consulte `docs/mvp_plano.md` para o status por fase), aplica-se:
+
+- Módulo `src/service_catalog/` com 4 submódulos: `types` (dataclasses `ServiceEntry` + `ReviewEntry`), `parse` (CSV→entries), `persist` (UPSERT via data layer), `review_queue` (enfileiramento idempotente de serviços não classificados).
+- Tabelas adicionais no data layer: `service_catalog` (PK = `service_code`, fornecido pelo import) e `service_review_queue` (PK = `id`, prefixo `srv_new_`, gerado por `next_id`).
+- Importação via CLI: `python scripts/import_service_catalog.py --csv <arquivo> --source lista_ativa|dane [--dry-run]`. UPSERT é idempotente (re-rodar com mesmo CSV não duplica).
+- Página read-only `Catálogo de Serviços` (`src/pages/catalogo_servicos.py`) com filtros por classificação, categoria, origem e busca textual; também mostra a fila de revisão (serviços vindos de Excel/PDF que ainda não estão no catálogo).
+- Acções de classificar/ignorar entradas da fila entram na Fase 6 (junto com o painel de alertas).

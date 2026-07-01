@@ -717,3 +717,42 @@
 - **Resolução aplicada:** rename do branch apenas (`git branch -m worktree-feature-supporthealthDB-clone worktree-feature-jornada-clinica`) — funcionou porque só toca em metadata do git, não em filesystem. Estado final é internamente consistente: `path=feature-supporthealthDB-clone` + `branch=worktree-feature-jornada-clinica`. Git aceita esse mismatch (path é apenas metadata do worktree). Documentado em `docs/phase_reports/mvp_phase_0_report.md` pendência M2.
 - **Lição:** **Quando M2 (rename worktree) esbarra em handle do Windows: separar em 2 fases.** (1) Branch rename (sempre funciona, é metadata). (2) Directory rename (precisa de sessão livre). Padrão permanente: ao abrir nova worktree via Claude Code, se houver intenção de renomear, fazer o directory rename **antes** de a sessão Claude ser iniciada (CWD locka o diretório). **Alternativa futura:** se vai haver rename, abrir a worktree com nome já correto via `EnterWorktree` — não usar a worktree `feature-supporthealthDB-clone` que ficou órfã de premissa. **Superseded by:** (nenhuma — heurística "branch rename parcial funciona, directory rename precisa de sessão livre" é permanente).
 - **Cross-ref:** `[[windows-vscode-worktree-lock]]` `[[docs/phase_reports/mvp_phase_0_report.md]]` (M2 pendência)
+
+### [2026-06-30] Fase 1 do MVP Jornada Clínica — schema-first antes de dados do Cliente
+
+- **Categoria:** `process` (N8 — padrão permanente para desacoplar dev do timing do Cliente)
+- **Status:** `decided` (executada)
+- **Componente:** fase inteira — schemas + módulo `src/service_catalog/` + CLI + UI + testes + docs
+- **Teste:** N/A — decisão de processo
+- **Causa raiz (motivação):** O plano MVP (`docs/mvp_plano.md`) lista Fase 1 como "dependente de Jader enviar lista ativa + lista da Dane". Mas esperar o Jader atrasa o time — schemas podem ser definidos antes; entrada de dados é, no pior caso, mock para dev. Decisão: criar o esqueleto completo (schemas no `EXPECTED_SCHEMAS` + 2 CSVs header-only + módulo `src/service_catalog/` com 5 arquivos + CLI `scripts/import_service_catalog.py` + página read-only `src/pages/catalogo_servicos.py` + 19 testes) **antes** do Jader enviar os CSVs.
+- **Resolução aplicada:** Tudo acima foi entregue. CSVs estão com header only (zero linhas); módulo e testes funcionam contra esse estado vazio. Quando Jader enviar lista ativa + lista da Dane, basta rodar `python scripts/import_service_catalog.py --csv <arquivo> --source lista_ativa|dane` e a UI read-only passa a refletir os dados. UPSERT é idempotente, então re-envios não corrompem.
+- **Lição:** **Schema-first desacopla o dev do timing do Cliente.** Custo de fazer o esqueleto antes dos dados é fixo (≈50 min nesta fase); benefício é que a Fase 2 (parser PDF) já pode chamar `enqueue_unknown_service()` para a fila de revisão sem esperar Jader. **Padrão permanente:** para qualquer feature que dependa de dados externos, criar schema + módulo + UI vazia primeiro; integrar dados quando chegarem. **Cross-ref:** `[[docs/mvp_plano.md]]` `[[docs/phase_reports/mvp_phase_1_report.md]]` `[[src/service_catalog/]]` `[[scripts/import_service_catalog.py]]` `[[src/pages/catalogo_servicos.py]]`
+
+### [2026-06-30] Fase 1 do MVP Jornada Clínica — idempotência por nome normalizado na fila de revisão
+
+- **Categoria:** `code` (N8 — padrão permanente para idempotência em filas incrementais)
+- **Status:** `passed` (testes `test_enqueue_unknown_service_*` cobrem)
+- **Componente:** `src/service_catalog/review_queue.py::enqueue_unknown_service` + `_normalize_service_name`
+- **Teste:** `tests/test_service_catalog.py::test_enqueue_unknown_service_increments_with_normalization` — `"Morpheus Variante"` (inserted) + `"  morpheus   variante  "` (incremented, mesmo id).
+- **Causa raiz (motivação):** `service_review_queue` é fila incremental — o mesmo serviço pode aparecer várias vezes no Excel/PDF antes de ser classificado (ex.: Botox aparece em 5 sessoes do mesmo paciente). Sem idempotência, fila explode com N linhas idênticas. Re-rodar o importer 2x no mesmo PDF também precisa ser idempotente.
+- **Resolução aplicada:** Função `_normalize_service_name(name) = " ".join(name.strip().lower().split())` — lowercase + trim + colapsa whitespace múltiplo mas **mantém acentos** (decisão Caminho B Fase 6). Em `enqueue_unknown_service`, depois de carregar a fila, busca `pending` com nome normalizado igual:
+  - Encontrou → `update_row(occurrences=current+1, last_seen_at=now)` → retorna `action="incremented"`.
+  - Não encontrou → `append_row` novo id → retorna `action="inserted"`.
+  - Já existe como `classified` ou `ignored` → retorna `action="skipped"` (assume decisão já tomada).
+  - String vazia → retorna `action="skipped"`.
+- **Lição:** **Filas incrementais SEMPRE precisam de idempotência por chave normalizada.** Sem ela, qualquer re-run do importer duplica linhas. Padrão permanente: ao criar fila de revisão, sempre (1) normalizar chaves de matching (lowercase + trim + collapse), (2) incrementar em vez de duplicar quando já existe, (3) nunca levantar exceção do caminho normal (retornar result type com `action`). **Cross-ref:** `[[src/service_catalog/review_queue.py]]` `[[tests/test_service_catalog.py]]` `[[src/csv_importer/parse.py::normalize_name]]` (mesma decisão sobre manter acentos)
+
+### [2026-06-30] Fase 1 do MVP Jornada Clínica — UPSERT CSV vs Postgres: paridade via `get_service()` antes de `append_row()`
+
+- **Categoria:** `code` (N8 — padrão permanente para UPSERT em data layers sem ON CONFLICT)
+- **Status:** `documented` (debt técnica aceita — Fase 5 cobre)
+- **Componente:** `src/service_catalog/persist.py::upsert_service`
+- **Teste:** `tests/test_service_catalog.py::test_upsert_inserts_then_updates` + `test_upsert_keeps_original_created_at` (cobrem CSV backend; Postgres backend não tem testes nesta fase)
+- **Causa raiz:** UPSERT genuíno precisa de `INSERT ... ON CONFLICT (service_code) DO UPDATE` no Postgres. O data layer `postgres_backend.py` foi implementado com `append_row` simples (sem ON CONFLICT) na Fase Neon preexistente. Adicionar ON CONFLICT agora exigiria mudar a API de `append_row` (que é compartilhada com 11 outras tabelas, incluindo seed de patients).
+- **Resolução aplicada:** Em `upsert_service`:
+  1. `existing = get_service(entry.service_code)` — lê o `service_catalog` atual.
+  2. Se `existing is None` → `append_row(...)` (funciona em CSV e Postgres).
+  3. Se `existing is not None` → `update_row(..., updates)` (funciona em CSV; **NO Postgres, vai criar nova linha em vez de atualizar** — debt aceita).
+  - `get_service` tem try/except em `load_table`, retorna `None` se backend falhar (N7).
+  - Docstring do `persist.py` e do `upsert_service` avisam: "UPDATE não está implementado no data layer para service_catalog — quando Jader precisar RE-classificar, a Fase 1 não cobre. Cobre na Fase 5 (junto com o CRUD de alertas)."
+- **Lição:** **Para feature nova que precisa de UPSERT em ambos os backends, o caminho mais barato é `get + append OR update` em vez de mexer no data layer.** Custo: precisa chamar `get_service` antes de cada write (1 read extra). Benefício: zero alteração em API compartilhada com 11 tabelas. Limitação: NO Postgres, UPDATE vira INSERT duplicado (debt). **Padrão permanente:** enquanto Postgres backend não tiver ON CONFLICT genérico, qualquer UPSERT novo deve usar esse padrão `get + branch`, e a Fase 5 fica dona de unificar tudo via `INSERT ... ON CONFLICT`. **Cross-ref:** `[[src/service_catalog/persist.py]]` `[[src/data_layer/postgres_backend.py]]` (Fase Neon) `[[docs/mvp_plano.md]]` (Fase 5)
