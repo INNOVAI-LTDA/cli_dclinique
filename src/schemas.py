@@ -127,6 +127,43 @@ EXPECTED_SCHEMAS: dict[str, list[str]] = {
         "comment",
     ],
     "data_quality_issues": ["issue_id", "source", "severity", "issue_type", "description", "patient_id", "field_name"],
+    # --- MVP Jornada Clínica (Fase 2.5: expected_appointments) ---
+    # Plano de frequência esperada materializado — 1 row por sessão
+    # esperada por item (sessions_expected × items). Rolante via
+    # ``last_actual_date`` (regra Q9: cada sessão real anda a janela
+    # para frente). PK = expected_appointment_id (sintético ``ea_new_NNN``).
+    #
+    # Substitui o conceito de "vetor estático gerado uma vez" previsto
+    # na Fase 4 do MVP — agora promovido para dentro da Fase 2.5 por
+    # briefing do cliente de 2026-07-01 (mesmo cliente também é responsável
+    # por definir os números de periodicidade com sufixo latino, ex.:
+    # "quinzenal" = 15 dias).
+    #
+    # Esquema de leitura rápida (PK + 3 FK + 6 colunas operacionais):
+    #   - session_index INTEGER 1..sessions_expected (NULL transientemente).
+    #   - expected_date = plan.issue_date + (i-1) × item.periodicity_days.
+    #   - actual_date preenchido pelo XLSX wizard (Fase 3) em
+    #     ``(patient, plan_item, data_inicio_plano)``.
+    #   - status ∈ {planned, agendado, atendido, atrasado, confirmado,
+    #     reagendado, cancelado} — referência da matriz de decisão §9 da
+    #     ata de 2026-06-30 + status.Enum do wizard XLSX (Fase 3).
+    #   - last_actual_date: DATE rolante (Q9) — última expected_date
+    #     atualizada por sessão real.
+    #   - source ∈ {pdf_wizard, excel_import, system} — rastreabilidade.
+    "expected_appointments": [
+        "expected_appointment_id",
+        "patient_id",
+        "plan_id",
+        "plan_item_id",
+        "session_index",
+        "expected_date",
+        "actual_date",
+        "status",
+        "last_actual_date",
+        "source",
+        "created_at",
+        "updated_at",
+    ],
     # --- MVP Jornada Clínica (Fase 1 — ver docs/mvp_plano.md) ---
     # service_catalog: whitelist de serviços canônicos. PK = service_code
     # (TEXT, fornecido pelo import — não há next_id porque o código é

@@ -57,6 +57,15 @@ _DATE_COLUMNS = {
     ("weight_entries", "measurement_date"),
     ("satisfaction_entries", "date"),
     ("alerts", "created_at"),
+    # --- MVP Jornada Clínica (Fase 2.5) ---
+    # expected_appointments: 5 TIMESTAMP columns —
+    # ``expected_date`` + ``actual_date`` (NULL initial, XLSX popula) +
+    # ``last_actual_date`` (rolante Q9) + ``created_at``/``updated_at``.
+    ("expected_appointments", "expected_date"),
+    ("expected_appointments", "actual_date"),
+    ("expected_appointments", "last_actual_date"),
+    ("expected_appointments", "created_at"),
+    ("expected_appointments", "updated_at"),
     # --- MVP Jornada Clínica (Fase 1) ---
     ("service_catalog", "created_at"),
     ("service_review_queue", "first_seen_at"),
@@ -85,6 +94,13 @@ _NULLABLE_INT_COLUMNS = {
     # --- MVP Jornada Clínica (Fase 1) ---
     ("service_catalog", "default_periodicity_days"),
     ("service_review_queue", "occurrences"),
+    # --- MVP Jornada Clínica (Fase 2.5) ---
+    # ``session_index`` INTEGER nullable: range 1..sessions_expected.
+    # Nullable transientemente se persistência parcial (NÃO acontece
+    # no fluxo PDF atual porque sempre gera via laço 1..N, mas a
+    # coluna é nullable por robustez ao XLSX editar uma row existente
+    # e o caller esquecer de manter o índice).
+    ("expected_appointments", "session_index"),
 }
 
 # CSV nao tem map explicito (pandas infere float64 automatico),

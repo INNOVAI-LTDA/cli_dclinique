@@ -53,6 +53,14 @@ NEW_ID_PREFIX: dict[str, str] = {
     # import — não passa por next_id; o código é externo).
     # ``service_review_queue`` PK = id (gerado por next_id).
     "service_review_queue": "srv_new",
+    # --- MVP Jornada Clínica (Fase 2.5) ---
+    # ``expected_appointments`` PK = expected_appointment_id, sintético
+    # ``ea_new_NNN``. dedup scans (executados em testes) inspecionam
+    # todas as PK columns, então o prefixo precisa ser único entre
+    # todas as tabelas. Aqui ``ea_new`` é novo e não colide com
+    # ``pat_new``/``plan_new``/``item_new``/``goal_new``/``w_new``/
+    # ``exec_new``/``srv_new``.
+    "expected_appointments": "ea_new",
 }
 
 # Column-level type metadata used by ``load_all`` to round-trip through
@@ -69,6 +77,12 @@ _DATE_COLUMNS: dict[str, set[str]] = {
     "weight_entries": {"measurement_date"},
     "satisfaction_entries": {"date"},
     "alerts": {"created_at"},
+    # --- MVP Jornada Clínica (Fase 2.5) ---
+    # ``expected_appointments`` -- 5 date columns. Mesma justificativa
+    # do ``src/data_layer/schema.py::_DATE_COLUMNS``. O round-trip CSV
+    # converte colunas listadas aqui para ``pd.Timestamp`` (em vez de
+    # object/string inferido pelo pandas).
+    "expected_appointments": {"expected_date", "actual_date", "last_actual_date", "created_at", "updated_at"},
     # --- MVP Jornada Clínica (Fase 1) ---
     "service_catalog": {"created_at"},
     "service_review_queue": {"first_seen_at", "last_seen_at"},
@@ -91,6 +105,9 @@ _NULLABLE_INT_COLUMNS: dict[str, set[str]] = {
     # --- MVP Jornada Clínica (Fase 1) ---
     "service_catalog": {"default_periodicity_days"},
     "service_review_queue": {"occurrences"},
+    # --- MVP Jornada Clínica (Fase 2.5) ---
+    # ``session_index`` INTEGER nullable (1..sessions_expected).
+    "expected_appointments": {"session_index"},
 }
 
 
@@ -202,6 +219,16 @@ def append_row(table: str, row: dict) -> None:
 
     The caller is responsible for invalidating the Streamlit cache via
     ``st.cache_data.clear()`` after a batch of appends.
+
+    Date format note: ``date_format='%Y-%m-%d %H:%M:%S'`` is pinned on
+    ``to_csv`` so Timestamp columns are written uniformly. Without it,
+    mixed string / Timestamp dtypes inside ``merged`` (caused by
+    ``_row_to_csv_dict`` returning ISO strings for midnight Timestamps
+    but letting pandas infer datetime64 for non-midnight values)
+    would serialize inconsistently — e.g. ``2026-07-01`` followed by
+    ``2026-07-08 00:00:00`` — and break the round-trip when
+    ``load_table`` re-parses. Forcing the format guarantees every
+    Timestamp column lands as ``YYYY-MM-DD HH:MM:SS``.
     """
     columns = EXPECTED_SCHEMAS[table]
     path = _csv_path(table)
@@ -211,7 +238,14 @@ def append_row(table: str, row: dict) -> None:
     payload = _row_to_csv_dict(row, columns)
     new_row_df = pd.DataFrame([payload], columns=columns)
     merged = pd.concat([existing, new_row_df], ignore_index=True)
-    merged.to_csv(path, index=False)
+    # Re-coerce date columns to ``datetime64`` before writing so the
+    # column dtype is uniform (mixed string/Timestamp columns would
+    # bypass ``date_format`` on ``to_csv`` and serialize inconsistently
+    # — e.g. ``2026-07-01`` followed by ``2026-07-08 00:00:00``).
+    for col in _DATE_COLUMNS.get(table, ()):
+        if col in merged.columns:
+            merged[col] = pd.to_datetime(merged[col], errors="coerce")
+    merged.to_csv(path, index=False, date_format="%Y-%m-%d %H:%M:%S")
 
 
 def update_row(table: str, key_column: str, key_value: str, updates: dict) -> None:

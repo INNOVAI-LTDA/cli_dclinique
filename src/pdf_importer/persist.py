@@ -61,8 +61,8 @@ import streamlit as st
 from src.data_layer import (
     append_row,
     delete_rows,
+    load_table,
     next_id,
-    next_id_with_prefix,
     replace_plan as _data_layer_replace_plan,
 )
 from src.pdf_importer.dedup import replace_patient as _dedup_replace_patient
@@ -103,7 +103,6 @@ def _build_execution_row(
     execution_id: str,
     patient_id: str,
     plan_id: str,
-    budget_code: str,
     item: dict[str, Any],
     plan: dict[str, Any],
 ) -> dict[str, Any]:
@@ -128,7 +127,6 @@ def _build_execution_row(
         "execution_id": execution_id,
         "patient_id": patient_id,
         "plan_id": plan_id,
-        "budget_code": budget_code,
         "procedure_raw": item.get("raw_name"),
         "procedure_category": item.get("category") or None,
         "status": _DEFAULT_EXEC_STATUS,
@@ -186,15 +184,24 @@ def _build_patient_row(patient_id: str, patient: dict[str, Any]) -> dict[str, An
 
 
 def _build_plan_row(plan_id: str, patient_id: str, plan: dict[str, Any]) -> dict[str, Any]:
-    """Assemble the row dict for an insert into ``treatment_plans``."""
-    # ``budget_code`` is minted from the data layer if the parse did
-    # not surface one — the source PDFs do not carry a budget
-    # number, so we always end up with a fresh ``orc_new_NNN``.
-    budget_code = (plan.get("budget_code") or "").strip() or next_id_with_prefix("orc_new")
+    """Assemble the row dict for an insert into ``treatment_plans``.
+
+    MVP Jornada Clínica (Fase 2.5): ``budget_code`` is **no longer
+    minted** here. Brief 2026-07-01 do cliente converteu o ID sintético
+    (``orc_new_NNN``) de "chave natural do processo" para "coluna
+    legada, NULL nas novas inserções". O PDF wizard nunca escreve
+    ``budget_code`` em planos ou itens (a coluna fica nullable no
+    schema e no header do CSV). Leituras antigas (snapshots
+    pre-Fase-2.5, mocks legados) continuam válidas; um ``DROP COLUMN``
+    posterior pode acontecer via migration em outro PR.
+
+    A coluna é omitida do row dict: ``append_row`` (data layer)
+    preenche chaves faltantes com ``pd.NA`` automaticamente,
+    mantendo schema e header do CSV alinhados.
+    """
     return {
         "plan_id": plan_id,
         "patient_id": patient_id,
-        "budget_code": budget_code,
         "issue_date": _to_date_or_today(plan.get("issue_date")),
         "start_date": _to_date_or_today(plan.get("start_date")),
         "end_date": _to_date_or_nat(plan.get("end_date")),
@@ -205,13 +212,16 @@ def _build_plan_row(plan_id: str, patient_id: str, plan: dict[str, Any]) -> dict
     }
 
 
-def _build_item_row(item_id: str, plan_id: str, patient_id: str, budget_code: str, item: dict[str, Any]) -> dict[str, Any]:
-    """Assemble the row dict for an insert into ``treatment_plan_items``."""
+def _build_item_row(item_id: str, plan_id: str, patient_id: str, item: dict[str, Any]) -> dict[str, Any]:
+    """Assemble the row dict for an insert into ``treatment_plan_items``.
+
+    MVP Jornada Clínica (Fase 2.5): ``budget_code`` não persistido —
+    ver docstring de ``_build_plan_row`` para contexto (brief 2026-07-01).
+    """
     return {
         "plan_item_id": item_id,
         "plan_id": plan_id,
         "patient_id": patient_id,
-        "budget_code": budget_code,
         "raw_name": item.get("raw_name"),
         "category": item.get("category") or None,
         "sessions_expected": _coerce_int_or_none(item.get("sessions_expected")),
@@ -225,13 +235,179 @@ def _build_item_row(item_id: str, plan_id: str, patient_id: str, budget_code: st
     }
 
 
+def _build_expected_appointment_rows(
+    plan_id: str,
+    patient_id: str,
+    items_with_ids: list[dict[str, Any]],
+    issue_date: Any,
+) -> list[dict[str, Any]]:
+    """Gera N rows para ``expected_appointments`` — 1 row por sessão esperada.
+
+    MVP Jornada Clínica (Fase 2.5): plano de frequência esperada
+    materializado. Para cada item:
+
+    - ``sessions_expected`` is None ou <= 0: skip (item sem sessões
+      significativas — não gera row).
+    - ``periodicity_days`` is None (``dose única`` ou item sem
+      ``frequency_type``): gera 1 row com ``expected_date =
+      issue_date`` (a sessão "única" esperada).
+    - Caso normal: gera N rows com ``expected_date = issue_date +
+      (i-1) × periodicity_days``, 1-indexed (1..N).
+
+    Status inicial = ``"planned"`` (não há dados de agendamento
+    ainda — o XLSX wizard (Fase 3) preenche ``actual_date`` quando
+    casa em ``(patient, plan_item, data_inicio_plano)``).
+    ``last_actual_date`` = None inicialmente (regra Q9 rolante: o
+    XLSX atualiza ao casar cada sessão real).
+    ``created_at`` / ``updated_at`` = timestamp atual (data do
+    import). ``source`` = ``"pdf_wizard"`` (rastreabilidade).
+
+    Parameters
+    ----------
+    plan_id, patient_id:
+        The (existing or freshly-minted) ids of the plan / patient.
+    items_with_ids:
+        List of item dicts that already have ``plan_item_id``
+        assigned (caller must mint it before calling this function —
+        see ``persist_rows`` insert path). Each item is expected
+        to expose ``sessions_expected``, ``periodicity_days`` and
+        ``plan_item_id``.
+    issue_date:
+        The plan's issue_date (used as offset 0). Can be a string
+        (``YYYY-MM-DD``) or a ``pd.Timestamp``. Defaults to today
+        when missing/invalid.
+
+    Returns
+    -------
+    list[dict]
+        One row dict per session. Empty when no item has sessions.
+    """
+    rows: list[dict[str, Any]] = []
+
+    issue_dt = pd.to_datetime(issue_date, errors="coerce")
+    if pd.isna(issue_dt):
+        issue_dt = pd.Timestamp.today().normalize()
+    issue_dt = issue_dt.normalize()
+    # ``Timestamp.now('UTC')`` is preferred over the deprecated
+    # ``Timestamp.utcnow()`` (Pandas 2.2+ raises a ``Pandas4Warning``).
+    # The CSV writer normalizes to ``%Y-%m-%d %H:%M:%S`` so the UTC
+    # offset is dropped at serialization time — the stored
+    # ``created_at`` / ``updated_at`` are calendar dates, not instants.
+    now = pd.Timestamp.now("UTC").normalize()
+
+    for item in items_with_ids:
+        sessions_raw = item.get("sessions_expected")
+        period_raw = item.get("periodicity_days")
+        try:
+            sessions = int(sessions_raw) if sessions_raw is not None else 0
+        except (TypeError, ValueError):
+            sessions = 0
+        if sessions <= 0:
+            continue
+        # Item sem periodicidade (dose única / sem frequency_type):
+        # gera 1 row com expected_date = issue_date (a sessão "única").
+        if period_raw is None:
+            offsets = [0]
+            sessions = 1
+        else:
+            try:
+                period = int(period_raw)
+            except (TypeError, ValueError):
+                period = 0
+            if period <= 0:
+                offsets = [0]
+                sessions = 1
+            else:
+                offsets = [(i - 1) * period for i in range(1, sessions + 1)]
+
+        for i, offset in enumerate(offsets, start=1):
+            expected_date = issue_dt + pd.Timedelta(days=offset)
+            rows.append({
+                # ``expected_appointment_id`` is intentionally omitted
+                # here — it's minted per-row by the caller during
+                # ``append_row`` (see ``_write_expected_appointments``
+                # docstring). Minting in a loop BEFORE persistence
+                # would return the same ``ea_new_NNN`` every time
+                # (each ``next_id`` reads the still-empty CSV).
+                "patient_id": patient_id,
+                "plan_id": plan_id,
+                "plan_item_id": item.get("plan_item_id"),
+                "session_index": i,
+                "expected_date": expected_date,
+                "actual_date": None,
+                "status": "planned",
+                "last_actual_date": None,
+                "source": "pdf_wizard",
+                "created_at": now,
+                "updated_at": now,
+            })
+
+    return rows
+
+
+def _write_expected_appointments(
+    *,
+    plan_id: str,
+    patient_id: str,
+    items_with_ids: list[dict[str, Any]],
+    issue_date: Any,
+    clear_existing: bool,
+    logger: PdfImportLogger | None,
+) -> int:
+    """Project the plan into ``expected_appointments``.
+
+    MVP Jornada Clínica (Fase 2.5): read-model that the alert engine
+    consumes to flag overdue / at-risk sessions. Cleared by the
+    replace-plan path (caller asks via ``clear_existing=True``)
+    because the data-layer ``replace_plan`` only handles
+    ``treatment_plan_items`` + ``patient_goals`` — same contract as
+    ``_write_goal_and_execution`` for the satellite execution view.
+
+    Returns
+    -------
+    int
+        Number of rows written (empty list → 0).
+    """
+    if clear_existing:
+        # Plan-id is the natural key here too — every expected row
+        # written by a previous import of this plan points at the
+        # same ``plan_id``. Wiping by ``plan_id`` handles the rare
+        # case where the new plan has fewer items than the old one.
+        delete_rows("expected_appointments", "plan_id", plan_id)
+
+    rows = _build_expected_appointment_rows(
+        plan_id=plan_id,
+        patient_id=patient_id,
+        items_with_ids=items_with_ids,
+        issue_date=issue_date,
+    )
+    # Mint the PK per-row during the append loop (NOT in the row
+    # builder) so consecutive ``next_id`` calls see the freshly-
+    # written CSV state — same pattern as the treatment_plan_items
+    # insert path. Minting in advance would return the same
+    # ``ea_new_NNN`` every time (each ``next_id`` reads the still-
+    # empty CSV).
+    for row in rows:
+        row["expected_appointment_id"] = next_id("expected_appointments")
+        append_row("expected_appointments", row)
+
+    if logger is not None and rows:
+        logger.stage(
+            "expected_appointments",
+            op="clear" if clear_existing else "insert",
+            plan_id=plan_id,
+            row_count=len(rows),
+        )
+
+    return len(rows)
+
+
 def _write_goal_and_execution(
     *,
     patient_id: str,
     plan_id: str,
     plan: dict[str, Any],
     items: list[dict[str, Any]],
-    budget_code: str,
     clear_existing_executions: bool,
     logger: PdfImportLogger | None,
 ) -> int:
@@ -257,9 +433,6 @@ def _write_goal_and_execution(
         build the goal row's ``goal_type`` / ``goal_notes`` and
         the execution row's ``procedure_raw`` /
         ``procedure_category`` / ``sessions_expected`` etc.
-    budget_code:
-        The plan's budget code; carried into the execution rows
-        so they match the plan row.
     clear_existing_executions:
         When True (the replace path), delete the old
         ``execution_summary`` rows for this plan first so we don't
@@ -302,12 +475,7 @@ def _write_goal_and_execution(
     # execution_summary — one row per plan item
     for item in items:
         # ``next_id("execution_summary")`` walks the table's primary
-        # key column and returns the next free ``exec_new_NNN``. We
-        # use it (rather than ``next_id_with_prefix("exec_new")``)
-        # because the prefix-aware helper is hardcoded to scan
-        # ``treatment_plans.budget_code`` for collisions, which is
-        # the wrong column for execution rows. ``execution_summary``
-        # is in ``NEW_ID_PREFIX`` so the table-aware path Just Works.
+        # key column and returns the next free ``exec_new_NNN``.
         execution_id = next_id("execution_summary")
         append_row(
             "execution_summary",
@@ -315,7 +483,6 @@ def _write_goal_and_execution(
                 execution_id,
                 patient_id,
                 plan_id,
-                budget_code,
                 item,
                 plan,
             ),
@@ -453,8 +620,7 @@ def persist_rows(
         # ``plan_id`` and clears the old items + goal before
         # re-inserting the new ones under the same id. The helper
         # also mints a fresh ``plan_item_id`` for each item at
-        # append time, so we just pass the items with the bare
-        # fields and the right budget_code.
+        # append time, so we just pass the items with the bare fields.
         existing_plan_id = str(candidate["dup_plan_id"])
         # The existing plan belongs to the existing patient — the
         # ``replace_plan`` lookup is keyed on
@@ -480,7 +646,7 @@ def persist_rows(
                 {
                     "plan_id": existing_plan_id,
                     "patient_id": plan_owner_pid,
-                    "budget_code": plan_row["budget_code"],
+                    # MVP Fase 2.5: ``budget_code`` não persistido (brief 2026-07-01).
                     "raw_name": item.get("raw_name"),
                     "category": item.get("category") or None,
                     "sessions_expected": _coerce_int_or_none(item.get("sessions_expected")),
@@ -513,6 +679,23 @@ def persist_rows(
                 plan_id=plan_id,
                 item_count=len(new_items),
             )
+        # MVP Fase 2.5: re-read the items to pick up the
+        # freshly-minted ``plan_item_id``s (the data-layer helper
+        # mints them internally during ``append_row``). Then
+        # regenerate ``expected_appointments`` (the data layer's
+        # ``replace_plan`` only handles ``treatment_plan_items`` +
+        # ``patient_goals`` — same contract as execution_summary).
+        items_df = load_table("treatment_plan_items")
+        items_df = items_df[items_df["plan_id"] == plan_id]
+        items_with_ids = items_df.to_dict("records")
+        _write_expected_appointments(
+            plan_id=plan_id,
+            patient_id=plan_owner_pid,
+            items_with_ids=items_with_ids,
+            issue_date=plan.get("issue_date"),
+            clear_existing=True,
+            logger=logger,
+        )
         # Project the plan into ``patient_goals`` + ``execution_summary``
         # so the ficha can show the imported plan. The data layer's
         # ``replace_plan`` cleared the old ``patient_goals`` row but
@@ -523,7 +706,6 @@ def persist_rows(
             plan_id=plan_id,
             plan=plan,
             items=items,
-            budget_code=plan_row["budget_code"],
             clear_existing_executions=True,
             logger=logger,
         )
@@ -536,14 +718,18 @@ def persist_rows(
                 "plan",
                 op="insert",
                 plan_id=plan_id,
-                budget_code=plan_row["budget_code"],
             )
+        items_with_ids: list[dict[str, Any]] = []
         for item in items:
             item_id = next_id("treatment_plan_items")
             item_ids.append(item_id)
+            # ``items_with_ids`` carrega o ``plan_item_id`` mintado
+            # para que ``_write_expected_appointments`` consiga
+            # popular o FK de ``expected_appointments.plan_item_id``.
+            items_with_ids.append({**item, "plan_item_id": item_id})
             append_row(
                 "treatment_plan_items",
-                _build_item_row(item_id, plan_id, patient_id, plan_row["budget_code"], item),
+                _build_item_row(item_id, plan_id, patient_id, item),
             )
         if logger is not None:
             logger.stage(
@@ -551,6 +737,18 @@ def persist_rows(
                 op="insert",
                 count=len(item_ids),
             )
+        # MVP Fase 2.5: project the plan into ``expected_appointments``
+        # (plano de frequência esperada materializado — 1 row por
+        # sessão esperada por item). Nothing to clear no insert path
+        # (plan é novo).
+        _write_expected_appointments(
+            plan_id=plan_id,
+            patient_id=patient_id,
+            items_with_ids=items_with_ids,
+            issue_date=plan.get("issue_date"),
+            clear_existing=False,
+            logger=logger,
+        )
         # Project the plan into ``patient_goals`` + ``execution_summary``
         # so the ficha can show the imported plan. Nothing to clear —
         # the plan is new so there are no orphan rows.
@@ -559,7 +757,6 @@ def persist_rows(
             plan_id=plan_id,
             plan=plan,
             items=items,
-            budget_code=plan_row["budget_code"],
             clear_existing_executions=False,
             logger=logger,
         )

@@ -41,10 +41,11 @@ from src.pdf_importer.dedup import find_patient_by_cpf, find_plan_by_issue_date
 from src.pdf_importer.log import PdfImportLogger
 
 REQUIRED_PATIENT_FIELDS: tuple[str, ...] = ("name", "medical_record")
-# ``budget_code`` is no longer required at the validation step — it
-# is minted by :mod:`src.pdf_importer.persist` from
-# ``next_id("treatment_plans")`` because the source PDFs do not
-# carry a budget number.
+# ``budget_code`` foi removido do processo no brief 2026-07-01 —
+# não existe mais em nenhum fluxo (PDF wizard ou cadastro manual).
+# A coluna permanece nullable em ``EXPECTED_SCHEMAS`` apenas para
+# não quebrar leituras legadas; um DROP COLUMN pode acontecer via
+# migration em outro PR.
 REQUIRED_PLAN_FIELDS: tuple[str, ...] = ()
 
 
@@ -164,11 +165,11 @@ def validate_rows(
         if not plan.get(field):
             warnings.append(f"plan.{field} (obrigatório vazio)")
 
-    # Note: budget_code uniqueness is enforced implicitly by
-    # :func:`src.data_layer.next_id`, which mints a fresh
-    # ``orc_new_NNN`` on every persist call — the source PDF does
-    # not carry a budget number, so we no longer check for
-    # duplicates here.
+    # Note: ``budget_code`` uniqueness no longer applies — a coluna
+    # foi removida do processo no brief 2026-07-01. Valores existentes
+    # em CSVs antigos permanecem válidos (snapshot pre-Fase-2.5).
+    # Dedup de plans continua via ``(patient_id, issue_date)``
+    # (ver :mod:`src.pdf_importer.dedup`).
 
     # Items: flag any with missing required fields for manual review
     for idx, item in enumerate(items):

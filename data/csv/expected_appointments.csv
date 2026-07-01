@@ -1,0 +1,1 @@
+expected_appointment_id,patient_id,plan_id,plan_item_id,session_index,expected_date,actual_date,status,last_actual_date,source,created_at,updated_at

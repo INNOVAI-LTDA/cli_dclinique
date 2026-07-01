@@ -875,3 +875,33 @@
 - **Lição (perpétua):** **Adicionar coluna nova = 4 lugares.** Mesma lição da Fase 1 ("adicionar página = 3 lugares"): `schemas.py` + `data/csv/<table>.csv` header + `data_layer/schema.py::_postgres_type` map + `csv_backend.py::_nullable_int_columns` (ou equivalente). Esquecer 1 lugar = bug silencioso (CSV lê coluna nova como `NaN`, Postgres rejeita INSERT). **Aplicar em Fase 3+:** helper `add_column(table, name, type)` que atualiza os 4 lugares de uma vez. Refactor pequeno, elimina classe de bug. Mesmo padrão para Fase 5 (alert_audit_log tabela nova — vai precisar de 4 lugares para colunas novas).
 - **Lição (perpétua):** **Sync insert path + replace path em `persist.py`.** A função `persist_rows` tem 2 caminhos (insert novo vs replace_plan), e ambos montam row dicts para `treatment_plan_items`. Esquecer 1 caminho = silent regression (replace re-importa com `periodicity_days` NULL mesmo se o item original tinha valor). O smoke validou apenas o insert path; o replace path precisa de teste E2E (rodar `pwsh scripts/run_core_tests.ps1`). **Aplicar em Fase 3+:** ao adicionar campo novo a uma tabela, listar TODOS os call sites que montam row dicts e atualizar todos. Heurística: `grep "_build_item_row\|new_items.append" src/pdf_importer/persist.py`.
 - **Cross-ref:** `[[src/schemas.py]]` `[[data/csv/treatment_plan_items.csv]]` `[[src/data_layer/schema.py]]` `[[src/data_layer/csv_backend.py]]` `[[src/pdf_importer/parse.py]]` `[[src/pdf_importer/persist.py]]` `[[docs/cliente_reuniao_2026-06-30.md D5]]` (split por vírgula)
+
+---
+
+## Fase 2.5 — `expected_appointments` + descarte de `budget_code` (2026-07-01)
+
+### [2026-07-01] Fase 2.5 — Briefing cliente: `budget_id` descartado + plano de frequência esperada materializado
+
+- **Categoria:** `design` (decisão cliente) + `code` (5 arquivos schema, 9 edits persist) + `test` (11 testes novos) + `bug` (B5 dtypes mistos, B6 PK minting)
+- **Status:** `passed` (pytest worktree **438/438 verde** em 55s; +11 testes novos)
+- **Componentes editados (10 arquivos novos/alterados):**
+  - `src/schemas.py` — `EXPECTED_SCHEMAS["expected_appointments"]` (14ª tabela, 12 colunas).
+  - `data/csv/expected_appointments.csv` — header-only novo.
+  - `src/data_layer/schema.py` — `_DATE_COLUMNS` (+5 entries), `_NULLABLE_INT_COLUMNS` (+1 entry para `session_index`).
+  - `src/data_layer/csv_backend.py` — `_DATE_COLUMNS` (+1 dict key), `_NULLABLE_INT_COLUMNS` (+1 dict key), `NEW_ID_PREFIX["expected_appointments"] = "ea_new"`.
+  - `src/data_layer/csv_backend.py::append_row` — coerce date columns + `date_format='%Y-%m-%d %H:%M:%S'` (ver lição B5 abaixo).
+  - `src/pdf_importer/persist.py` — 9 edits: import `load_table` (sem `next_id_with_prefix`), `_build_plan_row` (remove orc_new minting), `_build_item_row` (sem budget_code), `_build_execution_row` (sem budget_code), `_write_goal_and_execution` (sem budget_code), `_build_expected_appointment_rows` (NOVO, ~95 linhas), `_write_expected_appointments` (NOVO, ~55 linhas), `persist_rows` insert path (build `items_with_ids` + call), `persist_rows` replace path (load_table `items_with_ids` + call clear).
+  - `src/pdf_importer/validate.py` — 2 comentários sobre `budget_code` (manter coluna nullable + "uniqueness no longer applies").
+  - `tests/test_pdf_expected_appointments.py` — 11 testes NOVOS (8 pure-function + 3 end-to-end com `csv_dir` fixture).
+- **Decisão cliente (briefing 2026-07-01, ata `docs/cliente_reuniao_2026-07-01.md`):**
+  - **D-1 (budget_code):** coluna fica nullable em `EXPECTED_SCHEMAS` (não DROP COLUMN), mas wizard PDF para de persistir. Manter para não quebrar leituras legadas; DROP COLUMN pode acontecer em migration futura.
+  - **D-2 (plano de frequência esperada):** PDF gera N rows materializadas em `expected_appointments` (1 row por sessão esperada por item). XLSX wizard (Fase 3) preenche `actual_date` quando casa em `(patient, plan_item, data_inicio_plano)`.
+  - **D-3 (data_inicio_duas_colunas):** `data_inicio_agendamento` (XLSX) ≠ `data_inicio_plano` (PDF).
+  - **D-4 (status enum):** `Literal` — `{planned, agendado, atendido, atrasado, confirmado, reagendado, cancelado}` (matriz §9 ata 2026-06-30).
+- **Bug encontrado (B5) — dtypes mistos em `append_row`:** round-trip CSV gravava `2026-07-01` (string) na row 1 mas `2026-07-08 00:00:00` (Timestamp) na row 2, deixando datas como NaT no reload. **Causa raiz:** `_row_to_csv_dict` retorna string ISO para midnight Timestamp, mas `pd.DataFrame([payload])` infere dtype object, e `pd.concat([existing, new_row_df])` resulta em object column. `date_format='%Y-%m-%d %H:%M:%S'` no `to_csv` é IGNORADO em colunas object. **Resolução B5:** coerce explícito antes do `to_csv` — `merged[col] = pd.to_datetime(merged[col], errors="coerce")` para cada coluna em `_DATE_COLUMNS[table]`. Aplica em TODAS as tabelas (não específico a `expected_appointments`). Date format agora uniforme: `2026-07-01 00:00:00`.
+- **Bug encontrado (B6) — PK minting em loop pré-append:** `_build_expected_appointment_rows` chamava `next_id("expected_appointments")` em loop antes do primeiro `append_row`, retornando `ea_new_001` 3× porque o CSV ainda estava vazio. **Resolução B6:** mover PK minting para `_write_expected_appointments` (caller já em contexto de persistência). Mesma pattern do `treatment_plan_items` insert path.
+- **Lição (perpétua):** **`pd.read_csv` infere dtype por coluna; `pd.DataFrame([row_dict])` infere por linha única. A interação `load_table` (Timestamp) + `append_row` (string) + `pd.concat` (object) produz CSVs inconsistentes.** `date_format='...'` no `to_csv` só pega colunas datetime64. **Aplicar em Fase 3+:** sempre que `append_row` envolver colunas data, coerce ANTES do `to_csv`. Custo: 1 linha por tabela.
+- **Lição (perpétua):** **Mintar PK dentro do loop `append_row`, não antes.** Bug B6 prova que helpers "build rows + mint PK em loop antes do primeiro append" produzem IDs duplicados. **Aplicar em Fase 3+:** helpers de batch devem separar "build rows MINUS PK" de "mint PK + append".
+- **Lição (perpétua):** **Briefings curtos em ata separada facilitam referência.** Os 10 pontos de 2026-07-01 viraram `docs/cliente_reuniao_2026-07-01.md` (vs ata longa de 2026-06-30). Cross-ref entre atas via `[[docs/cliente_reuniao_2026-06-30.md D5]]`. **Aplicar em briefings futuros:** ata curta com decisões numeradas + cross-refs para atas longas.
+- **Cross-ref:** `[[docs/cliente_reuniao_2026-07-01.md]]` `[[src/pdf_importer/persist.py::_build_expected_appointment_rows]]` `[[src/pdf_importer/persist.py::_write_expected_appointments]]` `[[src/data_layer/csv_backend.py::append_row]]` (date_format fix) `[[tests/test_pdf_expected_appointments.py]]`
+- **Phase report:** `docs/phase_reports/mvp_phase_2_5_report.md`
